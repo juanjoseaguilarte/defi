@@ -6,8 +6,8 @@ const { sma, findMR, findmR } = require('../services/ranges');
 const VALID_PAIRS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'UNIUSDT', 'JUPUSDT', 'AAVEUSDT'];
 
 const INTERVAL_MAP = {
-    'M': '1M', '10080': '1w', '1440': '1d', '360': '6h',
-    '1d': '1d', '1w': '1w', '1M': '1M', '6h': '6h',
+    'M': '1M', '10080': '1w', '1440': '1d', '360': '6h', '60': '1h', '15': '15m',
+    '1d': '1d', '1w': '1w', '1M': '1M', '6h': '6h', '1h': '1h', '15m': '15m',
 };
 
 router.get('/', async (req, res) => {

@@ -7,6 +7,8 @@ const TF_MAP = {
     'Semanal': { interval: '1w', limit: 60 },
     'Diario':  { interval: '1d', limit: 250 },
     '6H':      { interval: '6h', limit: 250 },
+    '1H':      { interval: '1h', limit: 250 },
+    '15M':     { interval: '15m', limit: 250 },
 };
 
 const PHASE_STYLES = {

@@ -470,7 +470,7 @@ const PHASE_ICONS = {
     distribution: '\u{1F7E1}', accumulation: '\u{1F535}',
 };
 
-const TF_INTERVAL = { 'Mensual': 'M', 'Semanal': '10080', 'Diario': '1440', '6H': '360' };
+const TF_INTERVAL = { 'Mensual': 'M', 'Semanal': '10080', 'Diario': '1440', '6H': '360', '1H': '60', '15M': '15' };
 const COIN_PAIR = { BTC: 'BTCUSDT', ETH: 'ETHUSDT', SOL: 'SOLUSDT', UNI: 'UNIUSDT', JUP: 'JUPUSDT', AAVE: 'AAVEUSDT' };
 
 let analystData = null;
