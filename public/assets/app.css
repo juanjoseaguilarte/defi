@@ -943,7 +943,7 @@ input, select { font-family: var(--font); }
 }
 .tracker-alert__msg { font-size: 0.78rem; color: var(--text-2); line-height: 1.4; flex: 1; }
 /* Strategy history */
-.strategy-history { margin-top: 4px; }
+.strategy-history { margin-top: 4px; padding-bottom: 40px; }
 .strategy-history__title {
     font-size: 0.72rem; font-weight: 800; color: var(--text-3);
     text-transform: uppercase; letter-spacing: 0.04em;
