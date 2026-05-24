@@ -112,14 +112,13 @@ async function fetchMarketPhases() {
 // ═══════════════════════════════════════════════════════════════
 
 function getMarketRegime(phases) {
-    const btc = phases.BTC?.type || 'range';
-    const eth = phases.ETH?.type || 'range';
+    const btc = phases.BTC?.type || 'accumulation';
+    const eth = phases.ETH?.type || 'accumulation';
 
     if (btc === 'bear' || eth === 'bear') return 'bear';
     if (btc === 'bull' && eth === 'bull') return 'bull';
-    if (btc === 'accumulation' || eth === 'accumulation') return 'accumulation';
     if (btc === 'distribution' || eth === 'distribution') return 'distribution';
-    return 'transition';
+    return 'accumulation';
 }
 
 function getFundingApy(rates, asset, direction) {
@@ -371,62 +370,6 @@ function buildDistributionStrategy(amount, rates, phases) {
     ]);
 }
 
-// ── TRANSICIÓN / LATERAL ──
-function buildTransitionStrategy(amount, rates, phases) {
-    const steps = [];
-    let totalApy = 0;
-    const asset = 'ETH';
-    const lpPair = 'ETH-USDC';
-    const lpApy = rates.lp[lpPair] || 20;
-    const borrowApy = rates.aave.borrow[asset];
-
-    // 1. Supply USDC
-    steps.push({
-        step: 1, action: 'Supply USDC en Aave',
-        detail: `Depositar ${fmtUsd(amount)} USDC en Aave V3. Mercado sin dirección clara — estrategia conservadora delta neutral.`,
-        token: 'USDC', amount: amount, apy: rates.aave.supply.USDC, protocol: 'Aave V3',
-    });
-    totalApy += rates.aave.supply.USDC;
-
-    // 2. Borrow moderado
-    const borrowAmount = Math.floor(amount * 0.50);
-    const hf = (amount * AAVE_LTV.USDC) / borrowAmount;
-    steps.push({
-        step: 2, action: `Borrow ${asset} (50% LTV)`,
-        detail: `Pedir prestado ${fmtUsd(borrowAmount)} en ${asset}. Apalancamiento moderado para generar yield sin tomar demasiado riesgo. HF: ${hf.toFixed(2)}.`,
-        token: asset, amount: borrowAmount, apy: -borrowApy, protocol: 'Aave V3',
-    });
-    totalApy -= borrowApy * (borrowAmount / amount);
-
-    // 3. LP delta neutral
-    const lpAmount = Math.floor(borrowAmount * 0.85);
-    steps.push({
-        step: 3, action: `LP ${lpPair} delta neutral`,
-        detail: `Proveer ${fmtUsd(lpAmount)} en pool ${lpPair}. Rango centrado en el precio actual. Sin dirección clara, el LP genera fees del movimiento lateral.`,
-        token: lpPair, amount: lpAmount, apy: lpApy, protocol: 'Uniswap V3 / Camelot',
-    });
-    totalApy += lpApy * (lpAmount / amount);
-
-    // 4. Hedge completo
-    const hedgeAmount = borrowAmount - lpAmount;
-    const hedgeLev = 5;
-    steps.push({
-        step: 4, action: `SHORT ${asset} x${hedgeLev} (delta neutral)`,
-        detail: `SHORT de ${fmtUsd(hedgeAmount * hedgeLev)} con ${fmtUsd(hedgeAmount)} de margen. Cubre la exposición direccional del LP. Objetivo: ganar fees sin importar la dirección.`,
-        token: asset, amount: hedgeAmount, exposure: hedgeAmount * hedgeLev,
-        leverage: hedgeLev, direction: 'SHORT',
-        apy: getFundingApy(rates, asset, 'SHORT'), protocol: 'Hyperliquid',
-    });
-    totalApy += getFundingApy(rates, asset, 'SHORT') * (hedgeAmount / amount);
-
-    return finish(amount, 'LATERAL / TRANSICIÓN', phases, asset, steps, totalApy, [
-        'Vigilar cambios de etapa en BTC y ETH — rotar estrategia si cambia',
-        'Si confirma E2 (alcista): cerrar short, ampliar LP, añadir leverage',
-        'Si confirma E4 (bajista): cerrar LP, ampliar shorts, mover a stables',
-        'Rebalancear rango del LP semanalmente',
-    ]);
-}
-
 function finish(amount, marketPhase, phases, mainAsset, steps, totalApy, warnings) {
     let totalCollateral = 0, totalBorrowed = 0, totalLpExposure = 0, totalHedgeExposure = 0;
     let hf = 99;
@@ -461,9 +404,8 @@ function buildStrategy(amount, rates, phases) {
     switch (regime) {
         case 'bear':         return buildBearStrategy(amount, rates, phases);
         case 'bull':         return buildBullStrategy(amount, rates, phases);
-        case 'accumulation': return buildAccumulationStrategy(amount, rates, phases);
         case 'distribution': return buildDistributionStrategy(amount, rates, phases);
-        default:             return buildTransitionStrategy(amount, rates, phases);
+        default:             return buildAccumulationStrategy(amount, rates, phases);
     }
 }
 

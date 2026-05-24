@@ -14,7 +14,6 @@ const PHASE_STYLES = {
     bear:         { bg: 'rgba(239,68,68,0.15)',  color: '#ef4444', emoji: '🔴' },
     accumulation: { bg: 'rgba(59,130,246,0.15)', color: '#3b82f6', emoji: '🔵' },
     distribution: { bg: 'rgba(234,179,8,0.15)',  color: '#eab308', emoji: '🟡' },
-    range:        { bg: 'rgba(156,163,175,0.12)', color: '#9ca3af', emoji: '⚪' },
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -147,7 +146,7 @@ function detectTrap(candles, mrs, mrs_low) {
 
 function detectPhase(candles, currentPrice) {
     if (candles.length < 45) {
-        return { type: 'range', phase: 'Datos insuficientes', reason: 'Se necesitan al menos 45 velas para SMA40' };
+        return { type: 'accumulation', phase: 'Etapa 1 — Acumulación (datos limitados)', reason: 'Menos de 45 velas disponibles — asignado E1 por defecto' };
     }
 
     const closes = candles.map(c => c.close);
@@ -416,11 +415,20 @@ function detectPhase(candles, currentPrice) {
         };
     }
 
-    return {
-        type: 'range',
-        phase: 'Rango / Transición',
-        reason: `SMA20 pendiente: ${slope20.toFixed(2)}%, color: ${color}, cruces: ${crosses}`,
-    };
+    // No "Rango" — always assign one of the 4 stages
+    // If price is above SMA20 → leaning bullish side (E1 or E2)
+    // If price is below SMA20 → leaning bearish side (E3 or E4)
+    if (aboveSma20) {
+        if (slope20 > 0) {
+            return { type: 'bull', phase: 'Etapa 2 — Avance (débil)', reason: `Precio sobre SMA20 con pendiente positiva (${slope20.toFixed(2)}%). Sin confirmación completa de vías del tren` };
+        }
+        return { type: 'accumulation', phase: 'Etapa 1 — Acumulación', reason: `Precio sobre SMA20 pero pendiente aún no positiva (${slope20.toFixed(2)}%). Posible formación de base` };
+    } else {
+        if (slope20 < 0) {
+            return { type: 'bear', phase: 'Etapa 4 — Declive (débil)', reason: `Precio bajo SMA20 con pendiente negativa (${slope20.toFixed(2)}%). Sin confirmación completa de vías del tren` };
+        }
+        return { type: 'distribution', phase: 'Etapa 3 — Distribución', reason: `Precio bajo SMA20 pero pendiente aún no negativa (${slope20.toFixed(2)}%). Posible techo formándose` };
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -447,16 +455,16 @@ async function getAnalysis() {
                     phase: phase.phase,
                     reason: phase.reason,
                     price,
-                    style: PHASE_STYLES[phase.type] || PHASE_STYLES.range,
+                    style: PHASE_STYLES[phase.type] || PHASE_STYLES.accumulation,
                     is_stale: false,
                 };
             } catch (e) {
                 results[coin][tf] = {
-                    type: 'range',
+                    type: 'accumulation',
                     phase: 'Error',
                     reason: e.message,
                     price,
-                    style: PHASE_STYLES.range,
+                    style: PHASE_STYLES.accumulation,
                     is_stale: true,
                 };
             }

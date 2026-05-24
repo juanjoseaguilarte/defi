@@ -468,7 +468,6 @@ setInterval(loadRanges, 5 * 60 * 1000);
 const PHASE_ICONS = {
     bull: '\u{1F7E2}', bear: '\u{1F534}',
     distribution: '\u{1F7E1}', accumulation: '\u{1F535}',
-    range: '⚪', neutral: '⚫',
 };
 
 const TF_INTERVAL = { 'Mensual': 'M', 'Semanal': '10080', 'Diario': '1440', '6H': '360' };
@@ -481,7 +480,7 @@ function phaseShortLabel(type) {
     if (type === 'bear') return 'E4 Declive';
     if (type === 'distribution') return 'E3 Distrib.';
     if (type === 'accumulation') return 'E1 Acum.';
-    if (type === 'range') return 'Rango';
+    if (type === 'range') return 'E1 Acum.';
     return '—';
 }
 
