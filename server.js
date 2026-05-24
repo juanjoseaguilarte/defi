@@ -25,6 +25,7 @@ app.use('/api/candles_detail', require('./src/routes/candles'));
 app.use('/api/signals', require('./src/routes/signals'));
 app.use('/api/aave', require('./src/routes/aave'));
 app.use('/api/admin', require('./src/routes/admin'));
+app.use('/api/sync', require('./src/routes/sync'));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 app.get('/api/version', (req, res) => {
@@ -44,4 +45,7 @@ if (process.env.SERVE_STATIC !== '0') {
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Dashboard API running on port ${PORT}`);
+
+    const { startPeriodicSync } = require('./src/services/sync');
+    startPeriodicSync(3600000); // sync every hour
 });

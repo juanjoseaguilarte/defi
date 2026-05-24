@@ -251,6 +251,24 @@ input, select { font-family: var(--font); }
                 Click en "Actualizar" para cargar.
             </div>
         </div>
+
+        <!-- Sync / Historical data -->
+        <div class="section-card">
+            <div class="section-card__header">
+                <span class="section-card__title">Historial de Velas</span>
+                <div style="display:flex;gap:8px">
+                    <button class="btn btn-primary btn-sm" onclick="runSync()">Sincronizar ahora</button>
+                    <button class="btn btn-secondary btn-sm" onclick="loadSyncStatus()">Recargar</button>
+                </div>
+            </div>
+            <p style="font-size:0.72rem;color:var(--text-3);margin-bottom:14px;line-height:1.5">
+                Historial de velas almacenado en base de datos. Se sincroniza automáticamente cada hora.
+                La primera vez descarga 1 año de datos de Binance.
+            </p>
+            <div id="syncStatusContent" style="font-size:0.78rem;color:var(--text-2)">
+                Cargando...
+            </div>
+        </div>
     </div>
 
 </div>
@@ -373,6 +391,7 @@ function showAdmin(username) {
     document.getElementById('adminView').style.display = 'block';
     document.getElementById('adminUsername').textContent = username;
     loadRangesAdmin();
+    loadSyncStatus();
 }
 
 async function loadRangesAdmin() {
@@ -538,6 +557,62 @@ async function loadAutoRanges() {
 
     html += '</tbody></table>';
     el.innerHTML = html;
+}
+
+// ── Sync ────────────────────────────────────────────────────────
+async function loadSyncStatus() {
+    const el = document.getElementById('syncStatusContent');
+    el.innerHTML = 'Cargando...';
+    try {
+        const r = await fetch(`${API}/api/sync/status`, { headers: headers() });
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.error);
+
+        if (!d.candles || d.candles.length === 0) {
+            el.innerHTML = '<p style="color:var(--text-3)">No hay datos sincronizados aún. Pulsa "Sincronizar ahora".</p>';
+            return;
+        }
+
+        let html = '<table class="ranges-table"><thead><tr><th>Par</th><th>Intervalo</th><th>Velas</th><th>Desde</th><th>Hasta</th></tr></thead><tbody>';
+        for (const c of d.candles) {
+            html += `<tr>
+                <td class="pair-cell">${c.pair}</td>
+                <td class="tf-cell">${c.interval}</td>
+                <td style="text-align:center;font-weight:700">${c.total}</td>
+                <td style="font-size:0.7rem;color:var(--text-3)">${new Date(c.from).toLocaleDateString('es-ES')}</td>
+                <td style="font-size:0.7rem;color:var(--text-3)">${new Date(c.to).toLocaleDateString('es-ES')}</td>
+            </tr>`;
+        }
+        html += '</tbody></table>';
+
+        if (d.recent_syncs && d.recent_syncs.length > 0) {
+            const last = d.recent_syncs[0];
+            html += `<p style="font-size:0.68rem;color:var(--text-3);margin-top:10px">Última sync: ${last.synced_at} — ${last.candles_synced} velas (${last.pair} ${last.interval})</p>`;
+        }
+
+        el.innerHTML = html;
+    } catch (e) {
+        el.innerHTML = `<p style="color:var(--bear)">${e.message}</p>`;
+    }
+}
+
+async function runSync() {
+    const el = document.getElementById('syncStatusContent');
+    el.innerHTML = '<div style="display:flex;align-items:center;gap:8px"><div class="spinner spinner--sm" style="width:16px;height:16px;border-width:2px"></div> Sincronizando con Binance... (puede tardar un minuto)</div>';
+    toast('Sincronización iniciada...', true);
+    try {
+        const r = await fetch(`${API}/api/sync/run`, { method: 'POST', headers: headers() });
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.error);
+
+        const total = d.results.reduce((s, r) => s + r.count, 0);
+        const errors = d.results.filter(r => !r.ok).length;
+        toast(`Sync completa: ${total} velas guardadas` + (errors > 0 ? `, ${errors} errores` : ''), errors === 0);
+        loadSyncStatus();
+    } catch (e) {
+        toast('Error: ' + e.message, false);
+        el.innerHTML = `<p style="color:var(--bear)">${e.message}</p>`;
+    }
 }
 
 // ── Init ────────────────────────────────────────────────────────

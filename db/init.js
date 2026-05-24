@@ -34,6 +34,31 @@ function getDb() {
             FOREIGN KEY (user_id) REFERENCES admin_users(id)
         );
 
+        CREATE TABLE IF NOT EXISTS candles (
+            pair TEXT NOT NULL,
+            interval TEXT NOT NULL,
+            open_time INTEGER NOT NULL,
+            open REAL NOT NULL,
+            high REAL NOT NULL,
+            low REAL NOT NULL,
+            close REAL NOT NULL,
+            volume REAL NOT NULL,
+            close_time INTEGER NOT NULL,
+            PRIMARY KEY (pair, interval, open_time)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_candles_pair_interval
+            ON candles(pair, interval, open_time);
+
+        CREATE TABLE IF NOT EXISTS sync_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pair TEXT NOT NULL,
+            interval TEXT NOT NULL,
+            candles_synced INTEGER DEFAULT 0,
+            last_open_time INTEGER,
+            synced_at TEXT DEFAULT (datetime('now'))
+        );
+
         CREATE TABLE IF NOT EXISTS positions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             device_token TEXT NOT NULL,
