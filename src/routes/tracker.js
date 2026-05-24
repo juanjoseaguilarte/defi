@@ -114,6 +114,46 @@ router.post('/step', (req, res) => {
     res.json({ ok: true });
 });
 
+// GET /api/tracker/history — list all saved strategies
+router.get('/history', (req, res) => {
+    const dt = getDeviceToken(req);
+    const db = getDb();
+
+    const strategies = db.prepare(
+        'SELECT id, amount, market_phase, main_asset, status, created_at FROM executed_strategies WHERE device_token = ? ORDER BY id DESC LIMIT 50'
+    ).all(dt);
+
+    for (const s of strategies) {
+        const steps = db.prepare(
+            'SELECT step_num, done, entry_price, lp_range_low, lp_range_high, executed_at FROM executed_steps WHERE strategy_id = ?'
+        ).all(s.id);
+        s.steps_total = steps.length;
+        s.steps_done = steps.filter(st => st.done).length;
+    }
+
+    db.close();
+    res.json({ ok: true, strategies });
+});
+
+// GET /api/tracker/:id — get a specific strategy by id
+router.get('/:id', (req, res) => {
+    const id = parseInt(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
+
+    const db = getDb();
+    const strategy = db.prepare('SELECT * FROM executed_strategies WHERE id = ?').get(id);
+    if (!strategy) { db.close(); return res.status(404).json({ error: 'Estrategia no encontrada' }); }
+
+    const steps = db.prepare('SELECT * FROM executed_steps WHERE strategy_id = ? ORDER BY step_num').all(id);
+    db.close();
+
+    res.json({
+        ok: true,
+        strategy: { ...strategy, strategy_json: JSON.parse(strategy.strategy_json || '{}') },
+        steps,
+    });
+});
+
 // POST /api/tracker/close — close the active strategy
 router.post('/close', (req, res) => {
     const dt = req.body.device_token;

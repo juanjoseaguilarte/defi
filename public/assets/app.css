@@ -942,6 +942,43 @@ input, select { font-family: var(--font); }
     100% { background: rgba(239,68,68,0.08); }
 }
 .tracker-alert__msg { font-size: 0.78rem; color: var(--text-2); line-height: 1.4; flex: 1; }
+/* Strategy history */
+.strategy-history { margin-top: 4px; }
+.strategy-history__title {
+    font-size: 0.72rem; font-weight: 800; color: var(--text-3);
+    text-transform: uppercase; letter-spacing: 0.04em;
+    margin-bottom: 10px;
+}
+.history-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px 14px;
+    margin-bottom: 8px; cursor: pointer;
+    transition: border-color 0.2s;
+}
+.history-card:active { border-color: var(--accent); }
+.history-card__top {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 6px;
+}
+.history-card__amount { font-size: 0.95rem; font-weight: 800; }
+.history-badge {
+    font-size: 0.55rem; font-weight: 800; padding: 2px 8px;
+    border-radius: 4px; letter-spacing: 0.06em;
+}
+.history-badge--active { background: rgba(34,197,94,0.15); color: var(--bull); }
+.history-badge--closed { background: rgba(156,163,175,0.1); color: var(--text-3); }
+.history-card__mid {
+    display: flex; gap: 10px; font-size: 0.72rem;
+    color: var(--text-2); font-weight: 600;
+}
+.history-card__phase {
+    padding: 1px 6px; border-radius: 4px; font-size: 0.65rem;
+    background: var(--card2); color: var(--text-3);
+}
+.history-card__date {
+    font-size: 0.65rem; color: var(--text-3); margin-top: 4px;
+}
+
 .tracker-alert__dismiss {
     flex-shrink: 0; padding: 4px 10px; font-size: 0.7rem; font-weight: 700;
     background: var(--card2); border: 1px solid var(--border);

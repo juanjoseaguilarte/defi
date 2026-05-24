@@ -1045,7 +1045,16 @@ function renderStrategy(data) {
         APYs estimados — verificar en DeFiLlama y protocolos antes de ejecutar. ${data.calculated_at ? new Date(data.calculated_at).toLocaleString('es-ES') : ''}
     </div>`;
 
+    // Save button
+    html += `<div style="margin-top:16px">
+        <button class="btn-primary" onclick="saveAndTrackStrategy()" id="saveStrategyBtn">Guardar Estrategia</button>
+    </div>`;
+
+    // History section
+    html += `<div id="strategyHistory" style="margin-top:20px"></div>`;
+
     list.innerHTML = html;
+    loadStrategyHistory();
 }
 
 // ── Tracker functions ──
@@ -1159,6 +1168,83 @@ async function initTracker() {
     }
     if (trackerCheckInterval) clearInterval(trackerCheckInterval);
     trackerCheckInterval = setInterval(checkTrackerAlerts, 30000);
+}
+
+async function saveAndTrackStrategy() {
+    if (!strategyData) return;
+    const btn = document.getElementById('saveStrategyBtn');
+    btn.textContent = 'Guardando...';
+    btn.disabled = true;
+
+    await saveTrackerStrategy();
+
+    btn.textContent = 'Guardada';
+    btn.style.background = 'rgba(34,197,94,0.2)';
+    btn.style.color = 'var(--bull)';
+    setTimeout(() => {
+        btn.textContent = 'Guardar Estrategia';
+        btn.style.background = '';
+        btn.style.color = '';
+        btn.disabled = false;
+    }, 2000);
+
+    loadStrategyHistory();
+}
+
+async function loadStrategyHistory() {
+    const el = document.getElementById('strategyHistory');
+    if (!el) return;
+    const dt = getDeviceToken();
+
+    try {
+        const resp = await fetch(`${APP_BASE}/api/tracker/history?device_token=${dt}`);
+        const data = await resp.json();
+        if (!data.ok || !data.strategies?.length) {
+            el.innerHTML = '';
+            return;
+        }
+
+        let html = '<div class="strategy-history">';
+        html += '<div class="strategy-history__title">Historial de Estrategias</div>';
+
+        for (const s of data.strategies) {
+            const statusBadge = s.status === 'active'
+                ? '<span class="history-badge history-badge--active">ACTIVA</span>'
+                : '<span class="history-badge history-badge--closed">CERRADA</span>';
+            const progress = s.steps_total > 0 ? `${s.steps_done}/${s.steps_total} pasos` : '';
+            const date = new Date(s.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+            html += `<div class="history-card" onclick="loadHistoryStrategy(${s.id})">
+                <div class="history-card__top">
+                    <span class="history-card__amount">${fmtUsd(s.amount)}</span>
+                    ${statusBadge}
+                </div>
+                <div class="history-card__mid">
+                    <span>${s.main_asset || '—'}</span>
+                    <span class="history-card__phase">${s.market_phase || '—'}</span>
+                    <span>${progress}</span>
+                </div>
+                <div class="history-card__date">${date}</div>
+            </div>`;
+        }
+
+        html += '</div>';
+        el.innerHTML = html;
+    } catch (_) {}
+}
+
+async function loadHistoryStrategy(id) {
+    try {
+        const resp = await fetch(`${APP_BASE}/api/tracker/${id}`);
+        const data = await resp.json();
+        if (!data.ok || !data.strategy) return;
+
+        activeTracker = data;
+        strategyData = data.strategy.strategy_json;
+        if (strategyData?.steps) renderStrategy(strategyData);
+
+        document.querySelector('.page-content')?.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (_) {}
 }
 
 document.getElementById('strategyAmount').addEventListener('keydown', e => {
