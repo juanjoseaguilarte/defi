@@ -103,7 +103,7 @@ input, select { font-family: var(--font); }
     height: calc(100vh - var(--header-height) - var(--nav-height) - var(--safe-bottom));
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 0 14px 20px;
+    padding: 0 14px 60px;
     -webkit-overflow-scrolling: touch;
 }
 
