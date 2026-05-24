@@ -1022,6 +1022,30 @@ input, select { font-family: var(--font); }
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   SIMULATOR LOG
+   ═══════════════════════════════════════════════════════════════ */
+.sim-log { margin-top: 14px; }
+.sim-log__title {
+    font-size: 0.72rem; font-weight: 800; color: var(--text-3);
+    text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 10px;
+}
+.sim-log__entry {
+    display: flex; gap: 8px; align-items: baseline;
+    padding: 6px 0; border-bottom: 1px solid var(--border2);
+    font-size: 0.72rem;
+}
+.sim-log__date {
+    flex-shrink: 0; min-width: 80px;
+    color: var(--text-3); font-variant-numeric: tabular-nums;
+}
+.sim-log__type {
+    flex-shrink: 0; min-width: 70px;
+    font-weight: 700; font-size: 0.65rem;
+    text-transform: uppercase;
+}
+.sim-log__msg { color: var(--text-2); line-height: 1.4; }
+
+/* ═══════════════════════════════════════════════════════════════
    UPDATE BANNER
    ═══════════════════════════════════════════════════════════════ */
 .update-banner {

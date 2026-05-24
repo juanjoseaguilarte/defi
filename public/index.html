@@ -197,6 +197,39 @@
 
         </div>
 
+        <!-- SIMULAR -->
+        <div id="page-simulator" class="page-view" style="display:none">
+            <div class="section-header">
+                <h2 class="section-title">Simulador de Estrategia</h2>
+            </div>
+
+            <div class="strategy-input-wrap">
+                <div class="strategy-input__row" style="margin-bottom:10px">
+                    <div style="flex:1">
+                        <label class="strategy-input__label">Capital (USD)</label>
+                        <input type="number" class="aave-form__input" id="simAmount" value="10000" min="100" step="100">
+                    </div>
+                    <div style="flex:1">
+                        <label class="strategy-input__label">Activo</label>
+                        <select class="aave-form__select" id="simAsset" style="width:100%;padding:10px">
+                            <option value="ETH">ETH</option>
+                            <option value="BTC">BTC</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="margin-bottom:10px">
+                    <label class="strategy-input__label">Fecha inicio</label>
+                    <input type="date" class="aave-form__input" id="simStartDate" value="2025-01-01">
+                </div>
+                <button class="btn-primary" onclick="runSimulation()">Simular</button>
+                <div class="strategy-chain">Backtesting con datos reales de Binance almacenados</div>
+            </div>
+
+            <div id="simResults" style="display:none"></div>
+            <div id="simLog" style="display:none"></div>
+            <div id="simLoading" style="display:none" class="strategy-empty"><div class="spinner spinner--sm"></div><div>Simulando estrategia d&iacute;a a d&iacute;a...</div></div>
+        </div>
+
         <!-- AJUSTES -->
         <div id="page-settings" class="page-view" style="display:none">
             <h2 class="section-title" style="margin-bottom:20px">Ajustes</h2>
@@ -245,6 +278,10 @@
             <button class="nav-item" data-page="strategy">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
                 Estrategia
+            </button>
+            <button class="nav-item" data-page="simulator">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
+                Simular
             </button>
             <button class="nav-item" data-page="settings">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>

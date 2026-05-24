@@ -1287,6 +1287,132 @@ document.getElementById('strategyAmount').addEventListener('keydown', e => {
 // AUTO-UPDATE — Check for new version every 60s
 // ═══════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════
+// SIMULATOR
+// ═══════════════════════════════════════════════════════════════
+
+async function runSimulation() {
+    const amount = parseFloat(document.getElementById('simAmount').value) || 10000;
+    const asset = document.getElementById('simAsset').value;
+    const startDate = document.getElementById('simStartDate').value;
+    if (!startDate) { alert('Selecciona fecha de inicio'); return; }
+
+    document.getElementById('simLoading').style.display = 'flex';
+    document.getElementById('simResults').style.display = 'none';
+    document.getElementById('simLog').style.display = 'none';
+
+    try {
+        const resp = await fetch(`${APP_BASE}/api/simulator?asset=${asset}&amount=${amount}&startDate=${startDate}`);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+        renderSimResults(data);
+    } catch (e) {
+        document.getElementById('simResults').style.display = '';
+        document.getElementById('simResults').innerHTML = `<div class="strategy-warnings"><div class="strategy-warnings__title">Error</div><div class="strategy-warnings__item">${e.message}</div></div>`;
+    } finally {
+        document.getElementById('simLoading').style.display = 'none';
+    }
+}
+
+function renderSimResults(data) {
+    const el = document.getElementById('simResults');
+    el.style.display = '';
+
+    const retColor = data.totalReturn >= 0 ? 'var(--bull)' : 'var(--bear)';
+    const bhColor = data.buyHoldReturn >= 0 ? 'var(--bull)' : 'var(--bear)';
+    const alphaColor = data.alpha >= 0 ? 'var(--bull)' : 'var(--bear)';
+
+    el.innerHTML = `
+        <div class="strategy-portfolio-card" style="margin-top:14px">
+            <div style="text-align:center;margin-bottom:12px">
+                <div style="font-size:2.2rem;font-weight:900;color:${retColor}">${data.totalReturn >= 0 ? '+' : ''}${data.totalReturn}%</div>
+                <div style="font-size:0.75rem;color:var(--text-3)">Retorno estrategia</div>
+            </div>
+            <div class="portfolio-alloc">
+                <span class="portfolio-alloc__name">Capital inicial</span>
+                <span style="font-weight:700">${fmtUsd(data.initialAmount)}</span>
+            </div>
+            <div class="portfolio-alloc">
+                <span class="portfolio-alloc__name">Capital final</span>
+                <span style="font-weight:800;color:${retColor}">${fmtUsd(data.finalValue)}</span>
+            </div>
+            <div class="portfolio-alloc">
+                <span class="portfolio-alloc__name">Buy & Hold</span>
+                <span style="font-weight:700;color:${bhColor}">${data.buyHoldReturn >= 0 ? '+' : ''}${data.buyHoldReturn}%</span>
+            </div>
+            <div class="portfolio-alloc">
+                <span class="portfolio-alloc__name">Alpha vs B&H</span>
+                <span style="font-weight:800;color:${alphaColor}">${data.alpha >= 0 ? '+' : ''}${data.alpha}%</span>
+            </div>
+            <div class="portfolio-alloc">
+                <span class="portfolio-alloc__name">Período</span>
+                <span style="font-weight:600">${data.startDate} → ${data.endDate} (${data.totalDays}d)</span>
+            </div>
+            <div class="portfolio-alloc">
+                <span class="portfolio-alloc__name">Cambios de etapa</span>
+                <span style="font-weight:700">${data.phaseChanges}</span>
+            </div>
+            <div class="portfolio-alloc">
+                <span class="portfolio-alloc__name">Liquidaciones</span>
+                <span style="font-weight:700;color:${data.liquidations > 0 ? 'var(--bear)' : 'var(--bull)'}">${data.liquidations}</span>
+            </div>
+        </div>
+
+        <button class="btn-secondary" style="width:100%;margin-top:10px;padding:12px" onclick="toggleSimLog()">
+            Ver Log Completo (${data.log?.length || 0} eventos)
+        </button>
+
+        <button class="btn-secondary" style="width:100%;margin-top:8px;padding:12px" onclick="copySimLog()">
+            Copiar Log al Portapapeles
+        </button>
+    `;
+
+    // Render log
+    const logEl = document.getElementById('simLog');
+    if (data.log?.length) {
+        let logHtml = '<div class="sim-log">';
+        logHtml += '<div class="sim-log__title">Log de Simulación</div>';
+        for (const entry of data.log) {
+            const typeColors = { phase_change: 'var(--accent2)', open: 'var(--bull)', close: 'var(--bear)', liquidation: 'var(--bear)', lp_rebalance: 'var(--dist)', end: 'var(--text-2)' };
+            const color = typeColors[entry.type] || 'var(--text-3)';
+            logHtml += `<div class="sim-log__entry">
+                <span class="sim-log__date">${entry.date}</span>
+                <span class="sim-log__type" style="color:${color}">${entry.type}</span>
+                <span class="sim-log__msg">${entry.message}</span>
+            </div>`;
+        }
+        logHtml += '</div>';
+        logEl.innerHTML = logHtml;
+        window._simLogData = data.log;
+    }
+}
+
+function toggleSimLog() {
+    const el = document.getElementById('simLog');
+    el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+function copySimLog() {
+    if (!window._simLogData) return;
+    const text = window._simLogData.map(e => `${e.date} [${e.type}] ${e.message}`).join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+        alert('Log copiado al portapapeles');
+    }).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        alert('Log copiado');
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AUTO-UPDATE
+// ═══════════════════════════════════════════════════════════════
+
 let currentBuild = null;
 let updateAvailable = false;
 
