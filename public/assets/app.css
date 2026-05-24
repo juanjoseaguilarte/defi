@@ -848,6 +848,31 @@ input, select { font-family: var(--font); }
     font-size: 0.78rem; color: var(--text-2); line-height: 1.5;
     margin-bottom: 8px;
 }
+/* Price levels */
+.strategy-step__levels {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin: 8px 0; padding: 8px 10px;
+    background: var(--card2); border-radius: 8px;
+    border: 1px solid var(--border2);
+}
+.step-level {
+    display: flex; flex-direction: column; gap: 1px;
+    min-width: 70px; flex: 1;
+}
+.step-level__label {
+    font-size: 0.55rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--text-3);
+}
+.step-level__val {
+    font-size: 0.78rem; font-weight: 800;
+    font-variant-numeric: tabular-nums; color: var(--text);
+}
+.step-level--sl .step-level__val { color: var(--bear); }
+.step-level--tp .step-level__val { color: var(--bull); }
+.step-level--liq .step-level__label { color: var(--bear); }
+.step-level--liq .step-level__val { color: var(--bear); font-size: 0.7rem; }
+.step-level--range .step-level__val { color: var(--accent2); }
+
 .strategy-step__meta {
     display: flex; gap: 10px; flex-wrap: wrap;
     font-size: 0.7rem; color: var(--text-3);

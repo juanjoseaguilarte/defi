@@ -879,6 +879,13 @@ function fmtUsd(v) {
     return Number(v).toLocaleString('es-ES', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
 }
 
+function fmtP(v) {
+    if (!v || v === 0) return '—';
+    if (v > 1000) return Number(v).toLocaleString('es-ES', { maximumFractionDigits: 0 });
+    if (v > 1) return Number(v).toLocaleString('es-ES', { maximumFractionDigits: 2 });
+    return Number(v).toLocaleString('es-ES', { maximumFractionDigits: 4 });
+}
+
 const RISK_COLORS = {
     bajo:        { bg: 'rgba(34,197,94,0.15)',  color: '#22c55e' },
     medio:       { bg: 'rgba(234,179,8,0.15)',  color: '#eab308' },
@@ -900,7 +907,10 @@ async function loadStrategy() {
     document.getElementById('strategyPortfolio').style.display = 'none';
 
     try {
-        const resp = await fetch(`${APP_BASE}/api/strategy?amount=${amount}`);
+        await fetchLivePrices();
+        const btcP = latestPrices['BTCUSDT'] || 0;
+        const ethP = latestPrices['ETHUSDT'] || 0;
+        const resp = await fetch(`${APP_BASE}/api/strategy?amount=${amount}&btcPrice=${btcP}&ethPrice=${ethP}`);
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
         if (data.error) throw new Error(data.error);
@@ -974,8 +984,30 @@ function renderStrategy(data) {
 
         const t = trackedMap[s.step] || {};
         const isDone = t.done === 1;
-        const needsPrice = s.direction || s.action?.includes('Borrow') || s.action?.includes('Pool');
-        const needsRange = s.action?.includes('Pool');
+
+        const hasLevels = s.entry_price || s.stop_loss || s.take_profit || s.liquidation || s.lp_range_low;
+
+        let levelsHtml = '';
+        if (hasLevels) {
+            levelsHtml += '<div class="strategy-step__levels">';
+            if (s.entry_price) levelsHtml += `<div class="step-level"><span class="step-level__label">Entrada</span><span class="step-level__val">$${fmtP(t.entry_price || s.entry_price)}</span></div>`;
+            if (s.stop_loss) levelsHtml += `<div class="step-level step-level--sl"><span class="step-level__label">Stop Loss</span><span class="step-level__val">$${fmtP(s.stop_loss)}</span></div>`;
+            if (s.take_profit) levelsHtml += `<div class="step-level step-level--tp"><span class="step-level__label">Take Profit</span><span class="step-level__val">$${fmtP(s.take_profit)}</span></div>`;
+            if (s.liquidation) levelsHtml += `<div class="step-level step-level--liq"><span class="step-level__label">Liquidación</span><span class="step-level__val">$${fmtP(s.liquidation)}</span></div>`;
+            if (s.lp_range_low) levelsHtml += `<div class="step-level step-level--range"><span class="step-level__label">Rango LP</span><span class="step-level__val">$${fmtP(s.lp_range_low)} — $${fmtP(s.lp_range_high)}</span></div>`;
+            levelsHtml += '</div>';
+        }
+
+        // Editable inputs (always visible, pre-filled with strategy values)
+        let inputsHtml = '<div class="strategy-step__inputs" id="step-inputs-' + s.step + '">';
+        if (s.entry_price || s.direction || s.action?.includes('Borrow')) {
+            inputsHtml += `<div class="step-input-row"><label>Precio entrada</label><input type="number" step="any" value="${t.entry_price || s.entry_price || ''}" onchange="updateStepField(${s.step}, 'entry_price', this.value)"></div>`;
+        }
+        if (s.lp_range_low || s.action?.includes('Pool') || s.action?.includes('LP')) {
+            inputsHtml += `<div class="step-input-row"><label>Rango LP bajo</label><input type="number" step="any" value="${t.lp_range_low || s.lp_range_low || ''}" onchange="updateStepField(${s.step}, 'lp_range_low', this.value)"></div>`;
+            inputsHtml += `<div class="step-input-row"><label>Rango LP alto</label><input type="number" step="any" value="${t.lp_range_high || s.lp_range_high || ''}" onchange="updateStepField(${s.step}, 'lp_range_high', this.value)"></div>`;
+        }
+        inputsHtml += '</div>';
 
         html += `<div class="strategy-step-card ${isDone ? 'strategy-step--done' : ''}" id="step-card-${s.step}">
             <div class="strategy-step__check">
@@ -987,27 +1019,13 @@ function renderStrategy(data) {
             <div class="strategy-step__body">
                 <div class="strategy-step__action">${s.action} ${dirBadge}</div>
                 <div class="strategy-step__detail">${s.detail}</div>
+                ${levelsHtml}
                 <div class="strategy-step__meta">
                     <span class="strategy-step__protocol">${s.protocol}</span>
                     <span class="strategy-step__amount">${fmtUsd(s.amount)}</span>
                     <span style="color:${apyColor};font-weight:800">${apySign}${s.apy?.toFixed(1) || '0'}% APY</span>
                 </div>
-
-                ${needsPrice || needsRange ? `<div class="strategy-step__inputs" id="step-inputs-${s.step}" ${isDone ? '' : 'style="display:none"'}>
-                    ${needsPrice ? `<div class="step-input-row">
-                        <label>Precio entrada</label>
-                        <input type="number" step="any" placeholder="Ej: 2500" value="${t.entry_price || ''}" onchange="updateStepField(${s.step}, 'entry_price', this.value)">
-                    </div>` : ''}
-                    ${needsRange ? `<div class="step-input-row">
-                        <label>Rango LP bajo</label>
-                        <input type="number" step="any" placeholder="Ej: 2200" value="${t.lp_range_low || ''}" onchange="updateStepField(${s.step}, 'lp_range_low', this.value)">
-                    </div>
-                    <div class="step-input-row">
-                        <label>Rango LP alto</label>
-                        <input type="number" step="any" placeholder="Ej: 2800" value="${t.lp_range_high || ''}" onchange="updateStepField(${s.step}, 'lp_range_high', this.value)">
-                    </div>` : ''}
-                </div>` : ''}
-
+                ${inputsHtml}
                 ${isDone && t.executed_at ? `<div class="strategy-step__executed">✓ Ejecutado ${new Date(t.executed_at).toLocaleString('es-ES')}</div>` : ''}
             </div>
         </div>`;

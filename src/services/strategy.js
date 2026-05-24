@@ -175,243 +175,254 @@ function buildBearStrategy(amount, rates, phases, prices) {
     const steps = [];
     let totalApy = 0;
     const asset = phases.ETH?.type === 'bear' ? 'ETH' : 'BTC';
+    const price = prices[asset] || 0;
+    const regime = 'bear';
 
-    // 70% en stables puras
     const stableAmount = Math.floor(amount * 0.70);
     const supplyApy = rates.aave.supply.USDC;
     steps.push({
         step: 1, action: 'Supply USDC en Aave (refugio)',
-        detail: `Depositar ${fmtUsd(stableAmount)} USDC en Aave V3. En mercado bajista, la prioridad es preservar capital. Este depósito genera yield seguro sin exposición a volatilidad.`,
+        detail: `Depositar ${fmtUsd(stableAmount)} USDC en Aave V3. Preservar capital en mercado bajista.`,
         token: 'USDC', amount: stableAmount, apy: supplyApy, protocol: 'Aave V3',
     });
     totalApy += supplyApy * (stableAmount / amount);
 
-    // 20% short apalancado para beneficiarse de la caída
     const shortMargin = Math.floor(amount * 0.20);
     const shortLev = 5;
     const shortExposure = shortMargin * shortLev;
     const fundApy = getFundingApy(rates, asset, 'SHORT');
+    const sl = calcStopLoss(price, shortLev, 'SHORT');
+    const tp = calcTakeProfit(price, shortLev, 'SHORT');
+    const liq = calcLiquidationPrice(price, shortLev, 'SHORT');
     steps.push({
-        step: 2, action: `SHORT ${asset} x${shortLev} (beneficio de la caída)`,
-        detail: `SHORT de ${fmtUsd(shortExposure)} en ${asset}-PERP con ${fmtUsd(shortMargin)} de margen. En E4 bajista el precio tiende a caer — este short genera beneficio con la tendencia, no solo cubre.`,
+        step: 2, action: `SHORT ${asset} x${shortLev}`,
+        detail: `SHORT ${fmtUsd(shortExposure)} en ${asset}-PERP. Entrada: $${fmtPrice(price)}`,
         token: asset, amount: shortMargin, exposure: shortExposure,
         leverage: shortLev, direction: 'SHORT', apy: fundApy, protocol: 'Hyperliquid',
+        entry_price: price, stop_loss: sl, take_profit: tp, liquidation: liq,
     });
     totalApy += fundApy * (shortMargin / amount);
 
-    // 10% funding rate arb si funding es positivo
     const arbAmount = Math.floor(amount * 0.10);
     steps.push({
-        step: 3, action: `Funding Rate Arbitrage ${asset}`,
-        detail: `Con ${fmtUsd(arbAmount)}: si el funding es positivo, abre short adicional para cobrar funding. Si es negativo, mantén en USDC. En mercado bajista los longs suelen pagar a los shorts.`,
-        token: asset, amount: arbAmount, apy: Math.max(0, fundApy),
-        protocol: 'Hyperliquid',
+        step: 3, action: `Funding Arb ${asset}`,
+        detail: `${fmtUsd(arbAmount)} en short adicional si funding positivo. Cobrar funding rate en mercado bajista.`,
+        token: asset, amount: arbAmount, apy: Math.max(0, fundApy), protocol: 'Hyperliquid',
+        entry_price: price,
     });
     totalApy += Math.max(0, fundApy) * (arbAmount / amount);
 
-    return finish(amount, 'E4 — BAJISTA', phases, asset, steps, totalApy, [
-        'NO hacer LP con activos volátiles — el IL en mercado bajista es devastador',
-        'El short puede liquidarse si hay un rebote fuerte — usar stop loss',
-        'Si el mercado cambia a E1 (acumulación), cerrar shorts y rotar a estrategia neutral',
-        'Monitorizar cambios de etapa diariamente',
+    return finish(amount, 'E4 — BAJISTA', phases, asset, steps, totalApy, regime, prices, [
+        `Stop Loss SHORT: $${fmtPrice(sl)} — cerrar si el precio sube ahí`,
+        `Take Profit SHORT: $${fmtPrice(tp)} — recoger beneficios`,
+        `Liquidación SHORT: $${fmtPrice(liq)} — nunca dejar llegar`,
+        'Si cambia a E1, cerrar shorts y rotar a acumulación',
     ]);
 }
 
 // ── E2 ALCISTA: Máxima exposición, LP apalancado, longs ──
-function buildBullStrategy(amount, rates, phases) {
+function buildBullStrategy(amount, rates, phases, prices) {
     const steps = [];
     let totalApy = 0;
     const asset = phases.ETH?.type === 'bull' ? 'ETH' : 'BTC';
+    const price = prices[asset] || 0;
+    const regime = 'bull';
     const lpPair = `${asset}-USDC`;
     const lpApy = rates.lp[lpPair] || 20;
     const borrowApy = rates.aave.borrow[asset];
+    const lpRange = calcLpRange(price, regime);
 
-    // 1. Depositar todo como colateral
     steps.push({
-        step: 1, action: 'Depositar USDC como colateral en Aave',
-        detail: `Depositar ${fmtUsd(amount)} USDC en Aave V3. Esto sirve como colateral para pedir prestado ${asset} y apalancar la posición.`,
+        step: 1, action: 'Depositar USDC en Aave',
+        detail: `Depositar ${fmtUsd(amount)} USDC como colateral en Aave V3.`,
         token: 'USDC', amount: amount, apy: rates.aave.supply.USDC, protocol: 'Aave V3',
     });
     totalApy += rates.aave.supply.USDC;
 
-    // 2. Borrow agresivo (65%)
     const borrowAmount = Math.floor(amount * 0.65);
     const hf = (amount * AAVE_LTV.USDC) / borrowAmount;
+    const aaveLiq = price * (borrowAmount / (amount * AAVE_LTV.USDC));
     steps.push({
         step: 2, action: `Borrow ${asset} (65% LTV)`,
-        detail: `Pedir prestado ${fmtUsd(borrowAmount)} en ${asset}. En mercado alcista se aprovecha el apalancamiento. Health Factor: ${hf.toFixed(2)}. El ${asset} prestado se usará para LP.`,
+        detail: `Borrow ${fmtUsd(borrowAmount)} en ${asset} a $${fmtPrice(price)}. HF: ${hf.toFixed(2)}.`,
         token: asset, amount: borrowAmount, apy: -borrowApy, protocol: 'Aave V3',
+        entry_price: price, liquidation: aaveLiq,
     });
     totalApy -= borrowApy * (borrowAmount / amount);
 
-    // 3. LP con todo el borrow
     const lpAmount = borrowAmount;
     steps.push({
-        step: 3, action: `Pool de liquidez ${lpPair}`,
-        detail: `Proveer ${fmtUsd(lpAmount)} en el pool ${lpPair} concentrado. En E2 alcista el precio sube — poner rango amplio hacia arriba para capturar el movimiento.`,
+        step: 3, action: `LP ${lpPair} concentrado`,
+        detail: `Proveer ${fmtUsd(lpAmount)} en pool ${lpPair}. Rango: $${fmtPrice(lpRange.low)} — $${fmtPrice(lpRange.high)}`,
         token: lpPair, amount: lpAmount, apy: lpApy, protocol: 'Uniswap V3 / Camelot',
+        entry_price: price, lp_range_low: lpRange.low, lp_range_high: lpRange.high,
     });
     totalApy += lpApy * (lpAmount / amount);
 
-    // 4. Apalancar LP x2
     const levApy = lpApy * 2 - borrowApy;
     steps.push({
         step: 4, action: 'Apalancar LP x2 (Revert)',
-        detail: `Usar Revert Finance para doblar la posición LP. Exposición total: ${fmtUsd(lpAmount * 2)}. En mercado alcista el apalancamiento amplifica los fees y la apreciación del activo.`,
+        detail: `Exposición total: ${fmtUsd(lpAmount * 2)}. Apalancar LP para maximizar fees en E2.`,
         token: lpPair, amount: lpAmount, leveragedExposure: lpAmount * 2,
         apy: levApy, protocol: 'Revert Finance',
+        lp_range_low: lpRange.low, lp_range_high: lpRange.high,
     });
     totalApy += (levApy - lpApy) * (lpAmount / amount);
 
-    // 5. LONG ligero para maximizar
     const longMargin = Math.floor(amount * 0.05);
     const longLev = 10;
+    const longSl = calcStopLoss(price, longLev, 'LONG');
+    const longTp = calcTakeProfit(price, longLev, 'LONG');
+    const longLiq = calcLiquidationPrice(price, longLev, 'LONG');
     steps.push({
-        step: 5, action: `LONG ${asset} x${longLev} (impulso)`,
-        detail: `LONG de ${fmtUsd(longMargin * longLev)} con ${fmtUsd(longMargin)} de margen del rendimiento generado. Pequeña apuesta direccional a favor de la tendencia alcista.`,
+        step: 5, action: `LONG ${asset} x${longLev}`,
+        detail: `LONG ${fmtUsd(longMargin * longLev)} con ${fmtUsd(longMargin)} margen. Entrada: $${fmtPrice(price)}`,
         token: asset, amount: longMargin, exposure: longMargin * longLev,
-        leverage: longLev, direction: 'LONG',
-        apy: getFundingApy(rates, asset, 'LONG'), protocol: 'Hyperliquid',
+        leverage: longLev, direction: 'LONG', protocol: 'Hyperliquid',
+        apy: getFundingApy(rates, asset, 'LONG'),
+        entry_price: price, stop_loss: longSl, take_profit: longTp, liquidation: longLiq,
     });
 
-    return finish(amount, 'E2 — ALCISTA', phases, asset, steps, totalApy, [
-        'Si el mercado cambia a E3 (distribución), cerrar longs y reducir leverage',
-        'LP concentrado: ajustar rango si el precio sube mucho',
-        `Health Factor ${hf.toFixed(2)} — si ${asset} cae un 30% podría acercarse a liquidación`,
-        'En E2 de alta calidad (vías del tren claras) se puede ser más agresivo',
+    return finish(amount, 'E2 — ALCISTA', phases, asset, steps, totalApy, regime, prices, [
+        `Rango LP: $${fmtPrice(lpRange.low)} — $${fmtPrice(lpRange.high)} — rebalancear si sale`,
+        `Stop Loss LONG: $${fmtPrice(longSl)} | Take Profit: $${fmtPrice(longTp)}`,
+        `Aave liquidación si ${asset} sube a $${fmtPrice(aaveLiq)} (borrow, no supply)`,
+        'Si cambia a E3, cerrar long, reducir leverage, tomar beneficios LP',
     ]);
 }
 
-// ── E1 ACUMULACIÓN: Preparar posición, delta neutral, esperar ruptura ──
-function buildAccumulationStrategy(amount, rates, phases) {
+// ── E1 ACUMULACIÓN ──
+function buildAccumulationStrategy(amount, rates, phases, prices) {
     const steps = [];
     let totalApy = 0;
     const asset = phases.BTC?.type === 'accumulation' ? 'BTC' : 'ETH';
+    const price = prices[asset] || 0;
+    const regime = 'accumulation';
     const lpPair = `${asset}-USDC`;
     const lpApy = rates.lp[lpPair] || 20;
     const borrowApy = rates.aave.borrow[asset];
+    const lpRange = calcLpRange(price, regime);
 
-    // 1. Supply USDC
-    const supplyAmount = amount;
     steps.push({
-        step: 1, action: 'Supply USDC en Aave (colateral)',
-        detail: `Depositar ${fmtUsd(supplyAmount)} USDC en Aave V3. En E1 (acumulación) el precio se estabiliza — momento de construir posición para la próxima E2.`,
-        token: 'USDC', amount: supplyAmount, apy: rates.aave.supply.USDC, protocol: 'Aave V3',
-    });
-    totalApy += rates.aave.supply.USDC;
-
-    // 2. Borrow moderado (45%)
-    const borrowAmount = Math.floor(amount * 0.45);
-    const hf = (amount * AAVE_LTV.USDC) / borrowAmount;
-    steps.push({
-        step: 2, action: `Borrow ${asset} moderado (45% LTV)`,
-        detail: `Pedir prestado ${fmtUsd(borrowAmount)} en ${asset}. Borrow conservador — en acumulación el precio puede hacer falsas rupturas. HF: ${hf.toFixed(2)}.`,
-        token: asset, amount: borrowAmount, apy: -borrowApy, protocol: 'Aave V3',
-    });
-    totalApy -= borrowApy * (borrowAmount / amount);
-
-    // 3. LP con rango ajustado (delta neutral)
-    const lpAmount = Math.floor(borrowAmount * 0.80);
-    steps.push({
-        step: 3, action: `LP ${lpPair} rango estrecho (delta neutral)`,
-        detail: `Proveer ${fmtUsd(lpAmount)} en pool ${lpPair} con rango estrecho alrededor del precio actual. En E1 el precio oscila en rango — rango estrecho = más fees con el mismo capital. Mantiene delta neutral.`,
-        token: lpPair, amount: lpAmount, apy: lpApy * 1.5, protocol: 'Uniswap V3 / Camelot',
-    });
-    totalApy += (lpApy * 1.5) * (lpAmount / amount);
-
-    // 4. Hedge delta neutral con short
-    const hedgeAmount = Math.floor(borrowAmount * 0.15);
-    const hedgeLev = 3;
-    steps.push({
-        step: 4, action: `SHORT ${asset} x${hedgeLev} (cobertura delta neutral)`,
-        detail: `SHORT de ${fmtUsd(hedgeAmount * hedgeLev)} con ${fmtUsd(hedgeAmount)} de margen. Cubre la exposición del LP para mantener delta neutral. En E1 no queremos apostar dirección.`,
-        token: asset, amount: hedgeAmount, exposure: hedgeAmount * hedgeLev,
-        leverage: hedgeLev, direction: 'SHORT',
-        apy: getFundingApy(rates, asset, 'SHORT'), protocol: 'Hyperliquid',
-    });
-    totalApy += getFundingApy(rates, asset, 'SHORT') * (hedgeAmount / amount);
-
-    // 5. Reserva para la ruptura
-    const reserveAmount = borrowAmount - lpAmount - hedgeAmount;
-    steps.push({
-        step: 5, action: 'Reserva USDC para ruptura E2',
-        detail: `Mantener ${fmtUsd(reserveAmount)} en USDC listo para desplegar. Cuando ${asset} confirme ruptura del MR y entre en E2, usar para: cerrar short, ampliar LP, o abrir long.`,
-        token: 'USDC', amount: reserveAmount, apy: 0, protocol: 'Wallet',
-    });
-
-    return finish(amount, 'E1 — ACUMULACIÓN', phases, asset, steps, totalApy, [
-        `Vigilar el MR (Máximo Relevante) de ${asset} — su ruptura confirma inicio de E2`,
-        'Si el precio pierde el mR inferior, podría volver a E4 — cerrar LP y activar shorts',
-        'Rango del LP estrecho = más fees pero necesita rebalanceo frecuente',
-        'La reserva de USDC es clave — no desplegarla hasta confirmación de E2',
-    ]);
-}
-
-// ── E3 DISTRIBUCIÓN: Reducir exposición, tomar beneficios, preparar cobertura ──
-function buildDistributionStrategy(amount, rates, phases) {
-    const steps = [];
-    let totalApy = 0;
-    const asset = phases.BTC?.type === 'distribution' ? 'BTC' : 'ETH';
-    const borrowApy = rates.aave.borrow[asset];
-
-    // 1. Supply USDC conservador
-    steps.push({
-        step: 1, action: 'Supply USDC en Aave (seguro)',
-        detail: `Depositar ${fmtUsd(amount)} USDC en Aave V3. En E3 (distribución) el mercado se prepara para caer — prioridad es capital seguro en stables.`,
+        step: 1, action: 'Supply USDC en Aave',
+        detail: `Depositar ${fmtUsd(amount)} USDC en Aave V3. Construir posición para E2.`,
         token: 'USDC', amount: amount, apy: rates.aave.supply.USDC, protocol: 'Aave V3',
     });
     totalApy += rates.aave.supply.USDC;
 
-    // 2. Borrow bajo (35%)
+    const borrowAmount = Math.floor(amount * 0.45);
+    const hf = (amount * AAVE_LTV.USDC) / borrowAmount;
+    steps.push({
+        step: 2, action: `Borrow ${asset} (45% LTV)`,
+        detail: `Borrow ${fmtUsd(borrowAmount)} en ${asset} a $${fmtPrice(price)}. HF conservador: ${hf.toFixed(2)}.`,
+        token: asset, amount: borrowAmount, apy: -borrowApy, protocol: 'Aave V3',
+        entry_price: price,
+    });
+    totalApy -= borrowApy * (borrowAmount / amount);
+
+    const lpAmount = Math.floor(borrowAmount * 0.80);
+    steps.push({
+        step: 3, action: `LP ${lpPair} rango estrecho`,
+        detail: `${fmtUsd(lpAmount)} en pool. Rango: $${fmtPrice(lpRange.low)} — $${fmtPrice(lpRange.high)}. Rango estrecho = más fees en E1.`,
+        token: lpPair, amount: lpAmount, apy: lpApy * 1.5, protocol: 'Uniswap V3 / Camelot',
+        entry_price: price, lp_range_low: lpRange.low, lp_range_high: lpRange.high,
+    });
+    totalApy += (lpApy * 1.5) * (lpAmount / amount);
+
+    const hedgeAmount = Math.floor(borrowAmount * 0.15);
+    const hedgeLev = 3;
+    const hedgeSl = calcStopLoss(price, hedgeLev, 'SHORT');
+    const hedgeLiq = calcLiquidationPrice(price, hedgeLev, 'SHORT');
+    steps.push({
+        step: 4, action: `SHORT ${asset} x${hedgeLev} (delta neutral)`,
+        detail: `SHORT ${fmtUsd(hedgeAmount * hedgeLev)} con ${fmtUsd(hedgeAmount)} margen. Entrada: $${fmtPrice(price)}`,
+        token: asset, amount: hedgeAmount, exposure: hedgeAmount * hedgeLev,
+        leverage: hedgeLev, direction: 'SHORT', protocol: 'Hyperliquid',
+        apy: getFundingApy(rates, asset, 'SHORT'),
+        entry_price: price, stop_loss: hedgeSl, liquidation: hedgeLiq,
+    });
+    totalApy += getFundingApy(rates, asset, 'SHORT') * (hedgeAmount / amount);
+
+    const reserveAmount = borrowAmount - lpAmount - hedgeAmount;
+    steps.push({
+        step: 5, action: 'Reserva USDC para ruptura E2',
+        detail: `${fmtUsd(reserveAmount)} en USDC. Desplegar cuando ${asset} rompa MR y confirme E2.`,
+        token: 'USDC', amount: reserveAmount, apy: 0, protocol: 'Wallet',
+    });
+
+    return finish(amount, 'E1 — ACUMULACIÓN', phases, asset, steps, totalApy, regime, prices, [
+        `Rango LP: $${fmtPrice(lpRange.low)} — $${fmtPrice(lpRange.high)} — rebalancear si sale`,
+        `Stop Loss hedge: $${fmtPrice(hedgeSl)} — cerrar short si rompe al alza`,
+        `Si ${asset} rompe MR: cerrar short + desplegar reserva en LP/long`,
+        `Si ${asset} pierde mR: cerrar LP + ampliar shorts`,
+    ]);
+}
+
+// ── E3 DISTRIBUCIÓN ──
+function buildDistributionStrategy(amount, rates, phases, prices) {
+    const steps = [];
+    let totalApy = 0;
+    const asset = phases.BTC?.type === 'distribution' ? 'BTC' : 'ETH';
+    const price = prices[asset] || 0;
+    const regime = 'distribution';
+    const borrowApy = rates.aave.borrow[asset];
+
+    steps.push({
+        step: 1, action: 'Supply USDC en Aave',
+        detail: `Depositar ${fmtUsd(amount)} USDC en Aave V3. Capital seguro en E3.`,
+        token: 'USDC', amount: amount, apy: rates.aave.supply.USDC, protocol: 'Aave V3',
+    });
+    totalApy += rates.aave.supply.USDC;
+
     const borrowAmount = Math.floor(amount * 0.35);
     const hf = (amount * AAVE_LTV.USDC) / borrowAmount;
     steps.push({
         step: 2, action: `Borrow ${asset} bajo (35% LTV)`,
-        detail: `Pedir prestado solo ${fmtUsd(borrowAmount)} en ${asset}. En E3 se borra poco — alto riesgo de caída inminente. HF conservador: ${hf.toFixed(2)}.`,
+        detail: `Borrow ${fmtUsd(borrowAmount)} en ${asset} a $${fmtPrice(price)}. HF: ${hf.toFixed(2)}.`,
         token: asset, amount: borrowAmount, apy: -borrowApy, protocol: 'Aave V3',
+        entry_price: price,
     });
     totalApy -= borrowApy * (borrowAmount / amount);
 
-    // 3. Vender el borrow inmediatamente (convertir a USDC)
     steps.push({
-        step: 3, action: `Vender ${asset} del borrow → USDC`,
-        detail: `Vender inmediatamente los ${fmtUsd(borrowAmount)} de ${asset} prestado por USDC. Esto crea una posición SHORT sintética: si ${asset} cae, recompras más barato y devuelves a Aave con beneficio.`,
-        token: asset, amount: borrowAmount, apy: 0, protocol: 'Swap (1inch/Paraswap)',
+        step: 3, action: `Vender ${asset} → USDC (short sintético)`,
+        detail: `Vender ${fmtUsd(borrowAmount)} de ${asset} a $${fmtPrice(price)}. Si cae, recompras más barato y devuelves a Aave con beneficio.`,
+        token: asset, amount: borrowAmount, apy: 0, protocol: 'Swap',
+        entry_price: price, take_profit: price * 0.85,
     });
 
-    // 4. Short directo adicional
     const shortMargin = Math.floor(amount * 0.15);
     const shortLev = 5;
+    const sl = calcStopLoss(price, shortLev, 'SHORT');
+    const tp = calcTakeProfit(price, shortLev, 'SHORT');
+    const liq = calcLiquidationPrice(price, shortLev, 'SHORT');
     steps.push({
-        step: 4, action: `SHORT ${asset} x${shortLev} (anticipar E4)`,
-        detail: `SHORT de ${fmtUsd(shortMargin * shortLev)} con ${fmtUsd(shortMargin)} de margen. En E3 se anticipa la caída a E4. Si ${asset} pierde el primer mR, la caída suele ser rápida.`,
+        step: 4, action: `SHORT ${asset} x${shortLev}`,
+        detail: `SHORT ${fmtUsd(shortMargin * shortLev)} con ${fmtUsd(shortMargin)} margen. Entrada: $${fmtPrice(price)}`,
         token: asset, amount: shortMargin, exposure: shortMargin * shortLev,
-        leverage: shortLev, direction: 'SHORT',
-        apy: getFundingApy(rates, asset, 'SHORT'), protocol: 'Hyperliquid',
+        leverage: shortLev, direction: 'SHORT', protocol: 'Hyperliquid',
+        apy: getFundingApy(rates, asset, 'SHORT'),
+        entry_price: price, stop_loss: sl, take_profit: tp, liquidation: liq,
     });
     totalApy += getFundingApy(rates, asset, 'SHORT') * (shortMargin / amount);
 
-    // 5. Pool de stables (yield seguro con el capital restante)
     const stableLpAmount = borrowAmount;
-    const stableLpApy = 8;
     steps.push({
-        step: 5, action: 'Pool USDC estable (yield seguro)',
-        detail: `Depositar ${fmtUsd(stableLpAmount)} en un pool de stables (USDC-USDT o similar) para generar yield sin exposición a volatilidad. Alternativa: re-depositar en Aave.`,
-        token: 'USDC', amount: stableLpAmount, apy: stableLpApy,
-        protocol: 'Curve / Uniswap Stables',
+        step: 5, action: 'Pool USDC estable',
+        detail: `${fmtUsd(stableLpAmount)} en pool de stables. Yield seguro sin exposición.`,
+        token: 'USDC', amount: stableLpAmount, apy: 8, protocol: 'Curve / Uniswap Stables',
     });
-    totalApy += stableLpApy * (stableLpAmount / amount);
+    totalApy += 8 * (stableLpAmount / amount);
 
-    return finish(amount, 'E3 — DISTRIBUCIÓN', phases, asset, steps, totalApy, [
-        `Si ${asset} pierde el mR (mínimo relevante), confirma E4 — mantener shorts`,
-        `Si ${asset} recupera el MR superior, podría volver a E2 — cerrar shorts rápido`,
-        'La venta del borrow es una posición SHORT sintética — devolver el borrow cuando el precio caiga',
-        'E3 puede ser rápida (en V) o lenta (redondeada) — ajustar según el comportamiento',
-        'NO hacer LP apalancado en E3 — riesgo de IL catastrófico si comienza E4',
+    return finish(amount, 'E3 — DISTRIBUCIÓN', phases, asset, steps, totalApy, regime, prices, [
+        `Stop Loss SHORT: $${fmtPrice(sl)} | Take Profit: $${fmtPrice(tp)}`,
+        `Liquidación SHORT: $${fmtPrice(liq)}`,
+        `Short sintético (borrow+venta): recomprar ${asset} si cae a ~$${fmtPrice(price * 0.85)}`,
+        `Si ${asset} recupera MR superior → cerrar todo rápido, posible vuelta a E2`,
     ]);
 }
 
-function finish(amount, marketPhase, phases, mainAsset, steps, totalApy, warnings) {
+function finish(amount, marketPhase, phases, mainAsset, steps, totalApy, regime, prices, warnings) {
     let totalCollateral = 0, totalBorrowed = 0, totalLpExposure = 0, totalHedgeExposure = 0;
     let hf = 99;
 

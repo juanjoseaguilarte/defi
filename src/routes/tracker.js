@@ -195,42 +195,123 @@ router.get('/check', async (req, res) => {
     ).all(strategy.id);
 
     const newAlerts = [];
+    const price = req.query.price ? parseFloat(req.query.price) : null;
+    const strategyData = JSON.parse(strategy.strategy_json || '{}');
+    const savedPhase = strategy.market_phase || '';
+    const mainAsset = strategy.main_asset || 'ETH';
 
+    // ── LP Range alerts ──
     for (const step of steps) {
-        // Alert: LP price near range boundary
-        if (step.lp_range_low && step.lp_range_high && step.entry_price) {
+        if (step.lp_range_low && step.lp_range_high && price) {
             const rangeWidth = step.lp_range_high - step.lp_range_low;
             const threshold = rangeWidth * 0.10;
 
-            if (req.query.price) {
-                const price = parseFloat(req.query.price);
-                if (price <= step.lp_range_low + threshold) {
-                    newAlerts.push({
-                        type: 'lp_range',
-                        severity: 'high',
-                        message: `Precio (${price.toFixed(2)}) cerca del límite inferior del rango LP (${step.lp_range_low.toFixed(2)}). Considera rebalancear.`,
-                        step_num: step.step_num,
-                    });
-                }
-                if (price >= step.lp_range_high - threshold) {
-                    newAlerts.push({
-                        type: 'lp_range',
-                        severity: 'high',
-                        message: `Precio (${price.toFixed(2)}) cerca del límite superior del rango LP (${step.lp_range_high.toFixed(2)}). Considera rebalancear.`,
-                        step_num: step.step_num,
-                    });
-                }
-                if (price < step.lp_range_low || price > step.lp_range_high) {
-                    newAlerts.push({
-                        type: 'lp_out_of_range',
-                        severity: 'critical',
-                        message: `PRECIO FUERA DE RANGO LP. Rango: ${step.lp_range_low.toFixed(2)} - ${step.lp_range_high.toFixed(2)}. Precio actual: ${price.toFixed(2)}. Tu LP no está generando fees.`,
-                        step_num: step.step_num,
-                    });
-                }
+            if (price < step.lp_range_low || price > step.lp_range_high) {
+                newAlerts.push({
+                    type: 'lp_out_of_range', severity: 'critical',
+                    message: `PRECIO FUERA DE RANGO LP (paso ${step.step_num}). Rango: $${step.lp_range_low.toFixed(0)} — $${step.lp_range_high.toFixed(0)}. Precio: $${price.toFixed(0)}. Acción: retirar LP y rebalancear rango.`,
+                });
+            } else if (price <= step.lp_range_low + threshold) {
+                newAlerts.push({
+                    type: 'lp_range', severity: 'high',
+                    message: `Precio ($${price.toFixed(0)}) cerca del límite inferior del rango LP ($${step.lp_range_low.toFixed(0)}). Preparar rebalanceo.`,
+                });
+            } else if (price >= step.lp_range_high - threshold) {
+                newAlerts.push({
+                    type: 'lp_range', severity: 'high',
+                    message: `Precio ($${price.toFixed(0)}) cerca del límite superior del rango LP ($${step.lp_range_high.toFixed(0)}). Preparar rebalanceo.`,
+                });
+            }
+        }
+
+        // ── Stop Loss / Take Profit alerts ──
+        if (step.entry_price && price && step.direction) {
+            const entry = step.entry_price;
+            const pnlPct = step.direction === 'LONG'
+                ? ((price - entry) / entry * 100)
+                : ((entry - price) / entry * 100);
+            const lev = step.leverage || 1;
+
+            // Take profit: >15% profit on position
+            if (pnlPct * lev > 50) {
+                newAlerts.push({
+                    type: 'take_profit', severity: 'high',
+                    message: `${step.direction} ${mainAsset} (paso ${step.step_num}): +${(pnlPct * lev).toFixed(0)}% beneficio. Entrada: $${entry.toFixed(0)}, Actual: $${price.toFixed(0)}. Acción: considerar recoger beneficios parciales.`,
+                });
+            } else if (pnlPct * lev > 25) {
+                newAlerts.push({
+                    type: 'take_profit', severity: 'medium',
+                    message: `${step.direction} ${mainAsset} (paso ${step.step_num}): +${(pnlPct * lev).toFixed(0)}% beneficio. Considerar mover stop loss a breakeven.`,
+                });
+            }
+
+            // Stop loss warning
+            if (pnlPct * lev < -30) {
+                newAlerts.push({
+                    type: 'stop_loss', severity: 'critical',
+                    message: `${step.direction} ${mainAsset} (paso ${step.step_num}): ${(pnlPct * lev).toFixed(0)}% pérdida. Entrada: $${entry.toFixed(0)}, Actual: $${price.toFixed(0)}. Acción: cerrar posición o ajustar stop loss.`,
+                });
             }
         }
     }
+
+    // ── Phase change detection ──
+    try {
+        const analystResp = await fetch('http://localhost:' + (process.env.PORT || 3000) + '/api/analyst');
+        if (analystResp.ok) {
+            const analystData = await analystResp.json();
+            const currentPhases = {};
+            for (const coin of ['BTC', 'ETH']) {
+                currentPhases[coin] = analystData.results?.[coin]?.['Diario']?.type || 'accumulation';
+            }
+
+            const currentMainPhase = currentPhases[mainAsset] || 'accumulation';
+            const phaseLabels = { bull: 'E2 Alcista', bear: 'E4 Bajista', distribution: 'E3 Distribución', accumulation: 'E1 Acumulación' };
+
+            // Check if the phase changed from when strategy was created
+            const wasBearish = savedPhase.includes('BAJISTA') || savedPhase.includes('E4');
+            const wasBullish = savedPhase.includes('ALCISTA') || savedPhase.includes('E2');
+            const wasDistribution = savedPhase.includes('DISTRIBUCIÓN') || savedPhase.includes('E3');
+            const wasAccumulation = savedPhase.includes('ACUMULACIÓN') || savedPhase.includes('E1');
+
+            if (wasBearish && currentMainPhase !== 'bear') {
+                newAlerts.push({
+                    type: 'phase_change', severity: 'critical',
+                    message: `CAMBIO DE ETAPA: ${mainAsset} pasó de E4 Bajista a ${phaseLabels[currentMainPhase]}. Acción recomendada: cerrar shorts, rotar estrategia a ${phaseLabels[currentMainPhase]}.`,
+                });
+            }
+            if (wasBullish && currentMainPhase !== 'bull') {
+                newAlerts.push({
+                    type: 'phase_change', severity: 'critical',
+                    message: `CAMBIO DE ETAPA: ${mainAsset} pasó de E2 Alcista a ${phaseLabels[currentMainPhase]}. Acción recomendada: cerrar longs, reducir LP leverage, tomar beneficios.`,
+                });
+            }
+            if (wasAccumulation && currentMainPhase === 'bull') {
+                newAlerts.push({
+                    type: 'phase_change', severity: 'high',
+                    message: `${mainAsset} confirmó E2 Alcista. Acción: desplegar reserva USDC, cerrar short de cobertura, ampliar LP, considerar LONG.`,
+                });
+            }
+            if (wasAccumulation && currentMainPhase === 'bear') {
+                newAlerts.push({
+                    type: 'phase_change', severity: 'critical',
+                    message: `${mainAsset} volvió a E4 Bajista. Acción: cerrar LP inmediatamente, ampliar shorts, mover capital a stables.`,
+                });
+            }
+            if (wasDistribution && currentMainPhase === 'bear') {
+                newAlerts.push({
+                    type: 'phase_change', severity: 'high',
+                    message: `${mainAsset} confirmó E4 Bajista. Acción: mantener shorts, el short sintético (borrow+venta) está generando. Considerar ampliar posición bajista.`,
+                });
+            }
+            if (wasDistribution && currentMainPhase === 'bull') {
+                newAlerts.push({
+                    type: 'phase_change', severity: 'critical',
+                    message: `${mainAsset} volvió a E2 Alcista inesperadamente. Acción: cerrar shorts inmediatamente, recomprar borrow, rotar a estrategia alcista.`,
+                });
+            }
+        }
+    } catch (_) {}
 
     // Save new alerts
     const insertAlert = db.prepare(
