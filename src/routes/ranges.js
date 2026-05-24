@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { getRangesForPair } = require('../services/ranges');
+const { isUsingMockData } = require('../services/binance');
 const { getDb } = require('../../db/init');
 
 const VALID_PAIRS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'UNIUSDT', 'JUPUSDT', 'AAVEUSDT'];
-const TF_MAP = { daily: 'daily', weekly: 'weekly', monthly: 'monthly' };
 
 function getCustomRanges(pair) {
     const db = getDb();
@@ -12,7 +12,6 @@ function getCustomRanges(pair) {
         'SELECT timeframe, sup, mid, res FROM custom_ranges WHERE pair = ? AND enabled = 1'
     ).all(pair);
     db.close();
-
     const map = {};
     for (const r of rows) map[r.timeframe] = { sup: r.sup, mid: r.mid, res: r.res };
     return map;
@@ -24,10 +23,13 @@ router.get('/', async (req, res) => {
         return res.status(400).json({ error: 'Par no válido' });
     }
 
-    try {
-        const data = await getRangesForPair(pair);
-        const custom = getCustomRanges(pair);
+    const livePrice = req.query.price ? parseFloat(req.query.price) : null;
 
+    try {
+        const data = await getRangesForPair(pair, livePrice);
+        data._mock = isUsingMockData();
+
+        const custom = getCustomRanges(pair);
         for (const tf of ['daily', 'weekly', 'monthly']) {
             if (custom[tf] && data[tf]) {
                 data[tf].sup = custom[tf].sup;

@@ -181,7 +181,7 @@ function calculateRangesFromCandles(candles, currentPrice) {
     };
 }
 
-async function getRangesForPair(pair) {
+async function getRangesForPair(pair, livePriceOverride) {
     const [prices, dailyCandles, weeklyCandles, monthlyCandles] = await Promise.all([
         fetchAllPrices(),
         fetchKlines(pair, '1d', 250),
@@ -189,7 +189,8 @@ async function getRangesForPair(pair) {
         fetchKlines(pair, '1M', 24),
     ]);
 
-    const currentPrice = prices[pair] || 0;
+    // Use live price from frontend if provided (more reliable than backend fetch)
+    const currentPrice = livePriceOverride || prices[pair] || 0;
 
     const daily = calculateRangesFromCandles(dailyCandles, currentPrice);
     const weekly = calculateRangesFromCandles(weeklyCandles, currentPrice);

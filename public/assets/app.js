@@ -268,9 +268,23 @@ async function loadRanges() {
     setRangeLoading(true);
     document.getElementById('currentPrice').textContent = '—';
     try {
+        await fetchLivePrices();
+
         const meta = PAIR_META[currentPairKey] || {};
         const apiPath = meta.type === 'synthetic' ? '/api/synthetic' : '/api/ranges';
-        const resp = await fetch(`${APP_BASE}${apiPath}?pair=${currentPairKey}`);
+
+        let livePrice;
+        if (latestPrices[currentPairKey]) {
+            livePrice = latestPrices[currentPairKey];
+        } else if (SYNTHETIC_BASES[currentPairKey]) {
+            const [b, q] = SYNTHETIC_BASES[currentPairKey];
+            if (latestPrices[b] && latestPrices[q]) livePrice = latestPrices[b] / latestPrices[q];
+        }
+
+        let url = `${APP_BASE}${apiPath}?pair=${currentPairKey}`;
+        if (livePrice) url += `&price=${livePrice}`;
+
+        const resp = await fetch(url);
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
         if (data.error) throw new Error(data.error);

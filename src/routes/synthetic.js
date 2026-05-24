@@ -64,7 +64,8 @@ router.get('/', async (req, res) => {
     try {
         const [base, quote] = mapping;
         const prices = await fetchAllPrices();
-        const currentPrice = (prices[base] || 0) / (prices[quote] || 1);
+        const livePrice = req.query.price ? parseFloat(req.query.price) : null;
+        const currentPrice = livePrice || ((prices[base] || 0) / (prices[quote] || 1));
 
         const [dailyCandles, weeklyCandles, monthlyCandles] = await Promise.all([
             buildSyntheticCandles(base, quote, '1d', 30),
