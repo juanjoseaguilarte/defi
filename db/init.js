@@ -8,6 +8,32 @@ function getDb() {
     db.pragma('journal_mode = WAL');
 
     db.exec(`
+        CREATE TABLE IF NOT EXISTS admin_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS custom_ranges (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pair TEXT NOT NULL,
+            timeframe TEXT NOT NULL,
+            sup REAL NOT NULL,
+            mid REAL NOT NULL,
+            res REAL NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            updated_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(pair, timeframe)
+        );
+
+        CREATE TABLE IF NOT EXISTS sessions (
+            token TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            expires_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES admin_users(id)
+        );
+
         CREATE TABLE IF NOT EXISTS positions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             device_token TEXT NOT NULL,

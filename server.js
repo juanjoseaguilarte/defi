@@ -14,11 +14,15 @@ app.use('/api/analyst', require('./src/routes/analyst'));
 app.use('/api/candles_detail', require('./src/routes/candles'));
 app.use('/api/signals', require('./src/routes/signals'));
 app.use('/api/aave', require('./src/routes/aave'));
+app.use('/api/admin', require('./src/routes/admin'));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 if (process.env.SERVE_STATIC !== '0') {
     app.use(express.static(path.join(__dirname, 'public')));
+    app.get('/admin', (req, res) => {
+        res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+    });
     app.get('*', (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });

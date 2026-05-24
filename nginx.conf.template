@@ -28,6 +28,11 @@ server {
         add_header Cache-Control "public, immutable";
     }
 
+    # Admin panel
+    location = /admin {
+        try_files /admin.html =404;
+    }
+
     # SPA fallback
     location / {
         try_files $uri $uri/ /index.html;

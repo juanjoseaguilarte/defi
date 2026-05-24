@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { fetchKlines, fetchAllPrices } = require('../services/binance');
 const { sma, percentile, volPercentile } = require('../services/ranges');
+const { getDb } = require('../../db/init');
 
 const SYNTHETIC_PAIRS = {
     'BTCETH': ['BTCUSDT', 'ETHUSDT'],
@@ -84,15 +85,21 @@ router.get('/', async (req, res) => {
         const vols = dailyCandles.map(c => c.volume);
         const volPct = volPercentile(vols);
 
-        res.json({
-            pair: pairKey,
-            current_price: parseFloat(currentPrice.toFixed(8)),
-            trend,
-            vol_percentile: volPct,
-            daily,
-            weekly,
-            monthly,
-        });
+        const data = { pair: pairKey, current_price: parseFloat(currentPrice.toFixed(8)), trend, vol_percentile: volPct, daily, weekly, monthly };
+
+        const db = getDb();
+        const customs = db.prepare('SELECT timeframe, sup, mid, res FROM custom_ranges WHERE pair = ? AND enabled = 1').all(pairKey);
+        db.close();
+        for (const c of customs) {
+            if (data[c.timeframe]) {
+                data[c.timeframe].sup = c.sup;
+                data[c.timeframe].mid = c.mid;
+                data[c.timeframe].res = c.res;
+                data[c.timeframe]._custom = true;
+            }
+        }
+
+        res.json(data);
     } catch (e) {
         console.error('Synthetic error:', e);
         res.status(500).json({ error: 'Error al calcular par sintético' });

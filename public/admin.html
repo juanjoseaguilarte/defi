@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0a0e1a">
+<title>Admin — DeFi Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg: #0a0e1a; --bg2: #111627; --card: #161b2e; --card2: #1c2240;
+    --border: rgba(255,255,255,0.06); --border2: rgba(255,255,255,0.04);
+    --text: #e8eaed; --text-2: #9ca3af; --text-3: #6b7280;
+    --accent: #6366f1; --accent2: #818cf8;
+    --bull: #22c55e; --bear: #ef4444; --gold: #eab308;
+    --radius: 14px; --radius-sm: 10px;
+    --font: 'Inter', -apple-system, sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+    font-family: var(--font); background: var(--bg); color: var(--text);
+    -webkit-font-smoothing: antialiased; min-height: 100vh;
+}
+button { font-family: var(--font); cursor: pointer; border: none; background: none; color: inherit; }
+input, select { font-family: var(--font); }
+
+.container { max-width: 900px; margin: 0 auto; padding: 20px 16px 60px; }
+
+/* Header */
+.admin-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 0 24px; border-bottom: 1px solid var(--border); margin-bottom: 24px;
+}
+.admin-header__left { display: flex; align-items: center; gap: 12px; }
+.admin-header__title { font-size: 1.2rem; font-weight: 800; color: var(--accent2); }
+.admin-header__badge {
+    font-size: 0.6rem; font-weight: 800; padding: 3px 8px; border-radius: 6px;
+    background: rgba(99,102,241,0.15); color: var(--accent2); letter-spacing: 0.06em;
+}
+.admin-header__user { font-size: 0.78rem; color: var(--text-3); }
+.btn {
+    padding: 8px 16px; font-size: 0.8rem; font-weight: 700; border-radius: 8px;
+    transition: opacity 0.2s;
+}
+.btn:active { opacity: 0.7; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-secondary { background: var(--card); color: var(--text-2); border: 1px solid var(--border); }
+.btn-danger { background: rgba(239,68,68,0.15); color: var(--bear); border: 1px solid rgba(239,68,68,0.2); }
+.btn-sm { padding: 5px 10px; font-size: 0.7rem; }
+.btn-back {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 0.8rem; color: var(--text-3); margin-bottom: 16px;
+}
+.btn-back:hover { color: var(--text); }
+
+/* Login */
+.login-wrap {
+    max-width: 360px; margin: 80px auto;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 32px 24px;
+}
+.login-wrap h2 {
+    font-size: 1.1rem; font-weight: 800; color: var(--accent2);
+    text-align: center; margin-bottom: 24px;
+}
+.form-group { margin-bottom: 14px; }
+.form-label { display: block; font-size: 0.72rem; font-weight: 700; color: var(--text-2); margin-bottom: 5px; }
+.form-input {
+    width: 100%; padding: 10px 12px;
+    background: var(--card2); border: 1px solid var(--border2);
+    border-radius: var(--radius-sm); color: var(--text); font-size: 0.88rem; outline: none;
+}
+.form-input:focus { border-color: var(--accent); }
+.form-error {
+    font-size: 0.75rem; color: var(--bear); text-align: center;
+    margin-top: 10px; display: none;
+}
+.login-footer { font-size: 0.7rem; color: var(--text-3); text-align: center; margin-top: 16px; }
+
+/* Table */
+.section-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px; margin-bottom: 20px;
+}
+.section-card__header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+}
+.section-card__title {
+    font-size: 0.9rem; font-weight: 800; color: var(--accent2);
+    text-transform: uppercase; letter-spacing: 0.04em;
+}
+.ranges-table {
+    width: 100%; border-collapse: collapse; font-size: 0.8rem;
+}
+.ranges-table th {
+    padding: 8px 10px; text-align: left;
+    font-size: 0.65rem; font-weight: 700; color: var(--text-3);
+    text-transform: uppercase; letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--border);
+}
+.ranges-table td {
+    padding: 8px 10px; border-bottom: 1px solid var(--border2);
+    vertical-align: middle;
+}
+.ranges-table tr:last-child td { border-bottom: none; }
+.ranges-table .pair-cell { font-weight: 800; white-space: nowrap; }
+.ranges-table .tf-cell { color: var(--text-2); font-weight: 600; font-size: 0.72rem; }
+
+.range-input {
+    width: 100%; padding: 6px 8px;
+    background: var(--card2); border: 1px solid var(--border2);
+    border-radius: 6px; color: var(--text); font-size: 0.8rem;
+    font-variant-numeric: tabular-nums; outline: none; text-align: right;
+}
+.range-input:focus { border-color: var(--accent); }
+.range-input--custom { border-color: rgba(99,102,241,0.4); background: rgba(99,102,241,0.08); }
+
+.toggle-wrap { display: flex; align-items: center; justify-content: center; }
+.toggle { position: relative; width: 36px; height: 20px; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+    position: absolute; inset: 0; cursor: pointer;
+    background: var(--card2); border-radius: 10px; border: 1px solid var(--border2);
+    transition: all 0.2s;
+}
+.toggle-slider::before {
+    content: ''; position: absolute; left: 2px; top: 2px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--text-3); transition: all 0.2s;
+}
+.toggle input:checked + .toggle-slider { background: rgba(99,102,241,0.3); border-color: var(--accent); }
+.toggle input:checked + .toggle-slider::before { transform: translateX(16px); background: var(--accent); }
+
+.row-actions { display: flex; gap: 4px; }
+.save-status {
+    font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 4px;
+    display: none;
+}
+.save-status--ok { display: inline; color: var(--bull); background: rgba(34,197,94,0.1); }
+.save-status--err { display: inline; color: var(--bear); background: rgba(239,68,68,0.1); }
+
+/* Toast */
+.toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    padding: 10px 20px; border-radius: 10px; font-size: 0.82rem; font-weight: 700;
+    z-index: 999; opacity: 0; transition: opacity 0.3s; pointer-events: none;
+}
+.toast--show { opacity: 1; }
+.toast--ok { background: rgba(34,197,94,0.2); color: var(--bull); border: 1px solid rgba(34,197,94,0.3); }
+.toast--err { background: rgba(239,68,68,0.2); color: var(--bear); border: 1px solid rgba(239,68,68,0.3); }
+
+/* Responsive */
+@media (max-width: 600px) {
+    .ranges-table { font-size: 0.72rem; }
+    .range-input { padding: 5px 6px; font-size: 0.72rem; }
+    .ranges-table th, .ranges-table td { padding: 6px 4px; }
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+    <!-- LOGIN -->
+    <div id="loginView">
+        <div class="login-wrap">
+            <h2>Admin Panel</h2>
+            <div id="setupNotice" style="display:none">
+                <p style="font-size:0.78rem;color:var(--text-2);text-align:center;margin-bottom:16px;line-height:1.5">
+                    No hay usuarios admin. Crea el primero:
+                </p>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Usuario</label>
+                <input type="text" class="form-input" id="loginUser" autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Contraseña</label>
+                <input type="password" class="form-input" id="loginPass" autocomplete="current-password">
+            </div>
+            <button class="btn btn-primary" style="width:100%;margin-top:8px;padding:12px" id="loginBtn" onclick="doLogin()">Entrar</button>
+            <div class="form-error" id="loginError"></div>
+            <div class="login-footer">Panel de administración</div>
+        </div>
+    </div>
+
+    <!-- ADMIN PANEL -->
+    <div id="adminView" style="display:none">
+
+        <a href="/" class="btn-back">← Volver al Dashboard</a>
+
+        <div class="admin-header">
+            <div class="admin-header__left">
+                <span class="admin-header__title">Admin Panel</span>
+                <span class="admin-header__badge">RANGOS</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px">
+                <span class="admin-header__user" id="adminUsername"></span>
+                <button class="btn btn-secondary btn-sm" onclick="doLogout()">Cerrar sesión</button>
+            </div>
+        </div>
+
+        <!-- Ranges editor -->
+        <div class="section-card">
+            <div class="section-card__header">
+                <span class="section-card__title">Editar Rangos</span>
+                <div style="display:flex;gap:8px">
+                    <button class="btn btn-primary btn-sm" onclick="saveAllRanges()">Guardar todo</button>
+                    <button class="btn btn-secondary btn-sm" onclick="loadRangesAdmin()">Recargar</button>
+                </div>
+            </div>
+
+            <p style="font-size:0.72rem;color:var(--text-3);margin-bottom:14px;line-height:1.5">
+                Los rangos manuales tienen prioridad sobre los calculados automáticamente.
+                Activa el toggle para que un rango manual se use en el dashboard.
+            </p>
+
+            <div style="overflow-x:auto">
+                <table class="ranges-table" id="rangesTable">
+                    <thead>
+                        <tr>
+                            <th>Par</th>
+                            <th>Timeframe</th>
+                            <th>Soporte</th>
+                            <th>Midpoint</th>
+                            <th>Resistencia</th>
+                            <th style="text-align:center">Activo</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="rangesBody">
+                        <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-3)">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Current auto-calculated ranges (read only) -->
+        <div class="section-card">
+            <div class="section-card__header">
+                <span class="section-card__title">Rangos Auto-Calculados (referencia)</span>
+                <button class="btn btn-secondary btn-sm" onclick="loadAutoRanges()">Actualizar</button>
+            </div>
+            <p style="font-size:0.72rem;color:var(--text-3);margin-bottom:14px">
+                Valores calculados automáticamente desde Binance. Usa como referencia al editar.
+            </p>
+            <div id="autoRangesContent" style="font-size:0.78rem;color:var(--text-2)">
+                Click en "Actualizar" para cargar.
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';
+const ALL_PAIRS = ['BTCUSDT','ETHUSDT','SOLUSDT','UNIUSDT','JUPUSDT','AAVEUSDT','BTCETH','BTCSOL','ETHSOL','SOLJUP'];
+const TIMEFRAMES = ['daily','weekly','monthly'];
+const PAIR_LABELS = {
+    BTCUSDT:'BTC/USDT', ETHUSDT:'ETH/USDT', SOLUSDT:'SOL/USDT',
+    UNIUSDT:'UNI/USDT', JUPUSDT:'JUP/USDT', AAVEUSDT:'AAVE/USDT',
+    BTCETH:'BTC/ETH', BTCSOL:'BTC/SOL', ETHSOL:'ETH/SOL', SOLJUP:'SOL/JUP'
+};
+const TF_LABELS = { daily:'Diario', weekly:'Semanal', monthly:'Mensual' };
+
+let token = localStorage.getItem('admin_token') || '';
+let isSetup = false;
+let rangesData = {};
+
+function headers() {
+    return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+}
+
+function toast(msg, ok) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'toast toast--show ' + (ok ? 'toast--ok' : 'toast--err');
+    setTimeout(() => el.classList.remove('toast--show'), 2500);
+}
+
+// ── Auth ────────────────────────────────────────────────────────
+async function checkAuth() {
+    if (!token) { await checkSetup(); return; }
+    try {
+        const r = await fetch(`${API}/api/admin/me`, { headers: headers() });
+        if (!r.ok) throw new Error();
+        const d = await r.json();
+        showAdmin(d.username);
+    } catch (_) {
+        token = '';
+        localStorage.removeItem('admin_token');
+        await checkSetup();
+    }
+}
+
+async function checkSetup() {
+    try {
+        const r = await fetch(`${API}/api/admin/login`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: '', password: '' })
+        });
+        const d = await r.json();
+        if (d.error && d.error.includes('Ya existe')) {
+            isSetup = false;
+        }
+    } catch (_) {}
+
+    try {
+        const r = await fetch(`${API}/api/admin/setup`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: '', password: '' })
+        });
+        const d = await r.json();
+        if (d.error && d.error.includes('Ya existe')) {
+            isSetup = false;
+        } else {
+            isSetup = true;
+            document.getElementById('setupNotice').style.display = 'block';
+            document.getElementById('loginBtn').textContent = 'Crear admin y entrar';
+        }
+    } catch (_) {}
+}
+
+async function doLogin() {
+    const username = document.getElementById('loginUser').value.trim();
+    const password = document.getElementById('loginPass').value;
+    const errEl = document.getElementById('loginError');
+
+    if (!username || !password) { errEl.textContent = 'Rellena ambos campos'; errEl.style.display = 'block'; return; }
+
+    try {
+        if (isSetup) {
+            const sr = await fetch(`${API}/api/admin/setup`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const sd = await sr.json();
+            if (!sd.ok) { errEl.textContent = sd.error; errEl.style.display = 'block'; return; }
+        }
+
+        const r = await fetch(`${API}/api/admin/login`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        const d = await r.json();
+        if (!d.ok) { errEl.textContent = d.error; errEl.style.display = 'block'; return; }
+
+        token = d.token;
+        localStorage.setItem('admin_token', token);
+        showAdmin(d.username);
+    } catch (e) {
+        errEl.textContent = 'Error de conexión'; errEl.style.display = 'block';
+    }
+}
+
+async function doLogout() {
+    try { await fetch(`${API}/api/admin/logout`, { method: 'POST', headers: headers() }); } catch (_) {}
+    token = '';
+    localStorage.removeItem('admin_token');
+    location.reload();
+}
+
+document.getElementById('loginPass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+// ── Admin Panel ────────────────────────────────────────────────
+function showAdmin(username) {
+    document.getElementById('loginView').style.display = 'none';
+    document.getElementById('adminView').style.display = 'block';
+    document.getElementById('adminUsername').textContent = username;
+    loadRangesAdmin();
+}
+
+async function loadRangesAdmin() {
+    const tbody = document.getElementById('rangesBody');
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-3)">Cargando...</td></tr>';
+
+    try {
+        const r = await fetch(`${API}/api/admin/ranges`, { headers: headers() });
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.error);
+
+        rangesData = {};
+        for (const row of d.ranges) {
+            rangesData[row.pair + ':' + row.timeframe] = row;
+        }
+        renderRangesTable();
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--bear)">${e.message}</td></tr>`;
+    }
+}
+
+function renderRangesTable() {
+    const tbody = document.getElementById('rangesBody');
+    let html = '';
+
+    for (const pair of ALL_PAIRS) {
+        for (let ti = 0; ti < TIMEFRAMES.length; ti++) {
+            const tf = TIMEFRAMES[ti];
+            const key = pair + ':' + tf;
+            const existing = rangesData[key];
+            const sup = existing?.sup ?? '';
+            const mid = existing?.mid ?? '';
+            const res = existing?.res ?? '';
+            const enabled = existing ? existing.enabled : 1;
+            const hasData = existing != null;
+            const inputClass = hasData ? 'range-input range-input--custom' : 'range-input';
+
+            html += `<tr data-key="${key}">
+                <td class="pair-cell">${ti === 0 ? PAIR_LABELS[pair] || pair : ''}</td>
+                <td class="tf-cell">${TF_LABELS[tf]}</td>
+                <td><input type="number" class="${inputClass}" step="any" value="${sup}" data-field="sup" placeholder="—"></td>
+                <td><input type="number" class="${inputClass}" step="any" value="${mid}" data-field="mid" placeholder="—"></td>
+                <td><input type="number" class="${inputClass}" step="any" value="${res}" data-field="res" placeholder="—"></td>
+                <td class="toggle-wrap">
+                    <label class="toggle">
+                        <input type="checkbox" ${enabled ? 'checked' : ''} data-field="enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </td>
+                <td class="row-actions">
+                    <button class="btn btn-primary btn-sm" onclick="saveRow('${key}')">Guardar</button>
+                    ${hasData ? `<button class="btn btn-danger btn-sm" onclick="deleteRow('${pair}','${tf}')">x</button>` : ''}
+                    <span class="save-status" id="status_${key.replace(':','_')}"></span>
+                </td>
+            </tr>`;
+        }
+    }
+    tbody.innerHTML = html;
+}
+
+async function saveRow(key) {
+    const [pair, timeframe] = key.split(':');
+    const row = document.querySelector(`tr[data-key="${key}"]`);
+    const sup = parseFloat(row.querySelector('[data-field="sup"]').value);
+    const mid = parseFloat(row.querySelector('[data-field="mid"]').value);
+    const res = parseFloat(row.querySelector('[data-field="res"]').value);
+    const enabled = row.querySelector('[data-field="enabled"]').checked;
+
+    if (isNaN(sup) || isNaN(mid) || isNaN(res)) {
+        toast('Rellena Soporte, Midpoint y Resistencia', false);
+        return;
+    }
+
+    try {
+        const r = await fetch(`${API}/api/admin/ranges`, {
+            method: 'POST', headers: headers(),
+            body: JSON.stringify({ pair, timeframe, sup, mid, res, enabled })
+        });
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.error);
+
+        rangesData[key] = { pair, timeframe, sup, mid, res, enabled: enabled ? 1 : 0 };
+        row.querySelectorAll('.range-input').forEach(i => i.classList.add('range-input--custom'));
+        toast(`${PAIR_LABELS[pair]} ${TF_LABELS[timeframe]} guardado`, true);
+    } catch (e) {
+        toast('Error: ' + e.message, false);
+    }
+}
+
+async function deleteRow(pair, timeframe) {
+    try {
+        const r = await fetch(`${API}/api/admin/ranges/${pair}/${timeframe}`, {
+            method: 'DELETE', headers: headers()
+        });
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.error);
+
+        delete rangesData[pair + ':' + timeframe];
+        renderRangesTable();
+        toast(`${PAIR_LABELS[pair]} ${TF_LABELS[timeframe]} eliminado`, true);
+    } catch (e) {
+        toast('Error: ' + e.message, false);
+    }
+}
+
+async function saveAllRanges() {
+    const rows = document.querySelectorAll('#rangesBody tr[data-key]');
+    let saved = 0, skipped = 0;
+
+    for (const row of rows) {
+        const key = row.dataset.key;
+        const [pair, timeframe] = key.split(':');
+        const sup = parseFloat(row.querySelector('[data-field="sup"]').value);
+        const mid = parseFloat(row.querySelector('[data-field="mid"]').value);
+        const res = parseFloat(row.querySelector('[data-field="res"]').value);
+        const enabled = row.querySelector('[data-field="enabled"]').checked;
+
+        if (isNaN(sup) || isNaN(mid) || isNaN(res)) { skipped++; continue; }
+
+        try {
+            const r = await fetch(`${API}/api/admin/ranges`, {
+                method: 'POST', headers: headers(),
+                body: JSON.stringify({ pair, timeframe, sup, mid, res, enabled })
+            });
+            const d = await r.json();
+            if (d.ok) saved++;
+        } catch (_) {}
+    }
+
+    toast(`${saved} rangos guardados` + (skipped > 0 ? `, ${skipped} vacíos omitidos` : ''), true);
+    loadRangesAdmin();
+}
+
+// ── Auto ranges reference ──────────────────────────────────────
+async function loadAutoRanges() {
+    const el = document.getElementById('autoRangesContent');
+    el.innerHTML = 'Cargando...';
+
+    const NORMAL = ['BTCUSDT','ETHUSDT','SOLUSDT','UNIUSDT','JUPUSDT','AAVEUSDT'];
+    const SYNTH = ['BTCETH','BTCSOL','ETHSOL','SOLJUP'];
+
+    let html = '<table class="ranges-table"><thead><tr><th>Par</th><th>TF</th><th>Soporte</th><th>Mid</th><th>Resistencia</th></tr></thead><tbody>';
+
+    for (const pair of [...NORMAL, ...SYNTH]) {
+        try {
+            const endpoint = SYNTH.includes(pair) ? '/api/synthetic' : '/api/ranges';
+            const r = await fetch(`${API}${endpoint}?pair=${pair}`);
+            const d = await r.json();
+            if (d.error) continue;
+
+            for (const tf of ['daily','weekly','monthly']) {
+                if (!d[tf]) continue;
+                html += `<tr>
+                    <td class="pair-cell">${PAIR_LABELS[pair]}</td>
+                    <td class="tf-cell">${TF_LABELS[tf]}</td>
+                    <td style="text-align:right">${d[tf].sup?.toFixed?.(4) ?? '—'}</td>
+                    <td style="text-align:right">${d[tf].mid?.toFixed?.(4) ?? '—'}</td>
+                    <td style="text-align:right">${d[tf].res?.toFixed?.(4) ?? '—'}</td>
+                </tr>`;
+            }
+        } catch (_) {}
+    }
+
+    html += '</tbody></table>';
+    el.innerHTML = html;
+}
+
+// ── Init ────────────────────────────────────────────────────────
+checkAuth();
+</script>
+</body>
+</html>
