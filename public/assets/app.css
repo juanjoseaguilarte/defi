@@ -825,6 +825,74 @@ input, select { font-family: var(--font); }
     font-size: 0.7rem; color: var(--text-3); margin-top: 6px; line-height: 1.4;
 }
 
+/* Strategy step cards */
+.strategy-step-card {
+    display: flex; gap: 12px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px;
+    margin-bottom: 10px;
+}
+.strategy-step__num {
+    flex-shrink: 0; width: 28px; height: 28px;
+    border-radius: 50%; background: var(--accent);
+    color: #fff; font-size: 0.8rem; font-weight: 900;
+    display: flex; align-items: center; justify-content: center;
+}
+.strategy-step__body { flex: 1; min-width: 0; }
+.strategy-step__action {
+    font-size: 0.88rem; font-weight: 800; margin-bottom: 4px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.strategy-step__dir {
+    font-size: 0.6rem; font-weight: 800; padding: 2px 8px;
+    border-radius: 4px; letter-spacing: 0.05em;
+}
+.strategy-step__dir--long { background: rgba(34,197,94,0.15); color: var(--bull); }
+.strategy-step__dir--short { background: rgba(239,68,68,0.15); color: var(--bear); }
+.strategy-step__detail {
+    font-size: 0.78rem; color: var(--text-2); line-height: 1.5;
+    margin-bottom: 8px;
+}
+.strategy-step__meta {
+    display: flex; gap: 10px; flex-wrap: wrap;
+    font-size: 0.7rem; color: var(--text-3);
+}
+.strategy-step__protocol {
+    background: var(--card2); padding: 2px 8px; border-radius: 4px;
+    font-weight: 600; font-size: 0.65rem;
+}
+.strategy-step__amount { font-weight: 700; }
+
+/* Warnings */
+.strategy-warnings {
+    background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.15);
+    border-radius: var(--radius); padding: 14px 16px; margin-top: 14px;
+}
+.strategy-warnings__title {
+    font-size: 0.7rem; font-weight: 800; color: var(--bear);
+    text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;
+}
+.strategy-warnings__item {
+    font-size: 0.75rem; color: var(--text-3); line-height: 1.5;
+    padding: 3px 0; padding-left: 12px;
+    border-left: 2px solid rgba(239,68,68,0.2);
+    margin-bottom: 4px;
+}
+
+/* Rates reference */
+.strategy-rates {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px; margin-top: 14px;
+}
+.strategy-rates__title {
+    font-size: 0.7rem; font-weight: 800; color: var(--text-3);
+    text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;
+}
+.strategy-rates__grid {
+    display: grid; grid-template-columns: 1fr auto;
+    gap: 4px 12px; font-size: 0.72rem; color: var(--text-2);
+}
+
 /* ═══════════════════════════════════════════════════════════════
    UPDATE BANNER
    ═══════════════════════════════════════════════════════════════ */

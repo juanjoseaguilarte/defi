@@ -889,7 +889,8 @@ async function loadStrategy() {
     const btn = document.getElementById('strategyRefresh');
     const list = document.getElementById('strategyList');
     btn.classList.add('spinning');
-    list.innerHTML = '<div class="strategy-empty"><div class="spinner spinner--sm"></div><div>Analizando pools, lending y perps en Arbitrum...</div></div>';
+    list.innerHTML = '<div class="strategy-empty"><div class="spinner spinner--sm"></div><div>Analizando mercado y generando estrategia...</div></div>';
+    document.getElementById('strategyPortfolio').style.display = 'none';
 
     try {
         const resp = await fetch(`${APP_BASE}/api/strategy?amount=${amount}`);
@@ -906,104 +907,102 @@ async function loadStrategy() {
 }
 
 function renderStrategy(data) {
-    const src = data.data_sources || {};
-    const srcEl = document.getElementById('strategySources');
-    srcEl.style.display = '';
-    srcEl.innerHTML = `<span>Fuentes: ${src.defillama_pools || 0} pools</span><span>${src.hyperliquid_coins || 0} perps</span><span>${src.gmx_markets || 0} GMX</span>`;
+    const src = document.getElementById('strategySources');
+    src.style.display = '';
+    src.innerHTML = `<span>BTC: ${data.btcPhase || 'N/A'}</span><span>ETH: ${data.ethPhase || 'N/A'}</span>`;
 
-    // Portfolio summary
-    const portfolio = data.portfolio;
-    if (portfolio && portfolio.allocations.length > 0) {
-        document.getElementById('strategyPortfolio').style.display = '';
-        document.getElementById('portfolioApy').textContent = portfolio.totalApy.toFixed(1) + '% APY';
-        document.getElementById('portfolioAllocations').innerHTML = portfolio.allocations.map(a => {
-            const rc = RISK_COLORS[a.riskLevel] || RISK_COLORS.medio;
-            return `<div class="portfolio-alloc">
-                <span class="portfolio-alloc__name">${a.name}</span>
-                <span class="portfolio-alloc__weight">${a.weight}</span>
-                <span class="portfolio-alloc__amount">${fmtUsd(a.allocation)}</span>
-                <span class="portfolio-alloc__apy" style="color:var(--bull)">${a.apy.toFixed(1)}%</span>
-            </div>`;
-        }).join('');
-    }
+    // ── Portfolio summary ──
+    const portfolio = document.getElementById('strategyPortfolio');
+    portfolio.style.display = '';
 
-    // All strategies
+    const marketColor = data.marketPhase === 'ALCISTA' ? 'var(--bull)' : (data.marketPhase === 'BAJISTA' ? 'var(--bear)' : 'var(--accent2)');
+
+    document.getElementById('portfolioApy').textContent = data.totalEstApy + '% APY est.';
+    document.getElementById('portfolioAllocations').innerHTML = `
+        <div class="portfolio-alloc">
+            <span class="portfolio-alloc__name">Mercado</span>
+            <span style="color:${marketColor};font-weight:800;font-size:0.82rem">${data.marketPhase}</span>
+        </div>
+        <div class="portfolio-alloc">
+            <span class="portfolio-alloc__name">Activo principal</span>
+            <span style="font-weight:700">${data.mainAsset}</span>
+        </div>
+        <div class="portfolio-alloc">
+            <span class="portfolio-alloc__name">Health Factor</span>
+            <span style="color:${data.healthFactor > 1.5 ? 'var(--bull)' : 'var(--bear)'};font-weight:800">${data.healthFactor}</span>
+        </div>
+        <div class="portfolio-alloc">
+            <span class="portfolio-alloc__name">Colateral</span>
+            <span style="font-weight:700">${fmtUsd(data.totalExposure?.collateral)}</span>
+        </div>
+        <div class="portfolio-alloc">
+            <span class="portfolio-alloc__name">Borrowed</span>
+            <span style="font-weight:700">${fmtUsd(data.totalExposure?.borrowed)}</span>
+        </div>
+    `;
+
+    // ── Steps ──
     const list = document.getElementById('strategyList');
-    if (!data.all_strategies?.length) {
-        list.innerHTML = '<div class="strategy-empty"><div>No se encontraron estrategias delta-neutral viables</div><div class="strategy-empty__sub">Intenta con un monto diferente o espera a que cambien las condiciones del mercado</div></div>';
+    if (!data.steps?.length) {
+        list.innerHTML = '<div class="strategy-empty"><div>No se pudo generar estrategia</div></div>';
         return;
     }
 
-    list.innerHTML = data.all_strategies.map((s, idx) => {
-        const rc = RISK_COLORS[s.riskLevel] || RISK_COLORS.medio;
-        const icon = STRATEGY_ICONS[s.type] || '\u{1F4CA}';
-        return `<div class="strategy-card" onclick="showStrategyDetail(${idx})" style="border-left:4px solid ${rc.color}">
-            <div class="strategy-card__top">
-                <div class="strategy-card__name">${icon} ${s.name}</div>
-                <div class="strategy-card__risk" style="background:${rc.bg};color:${rc.color}">${s.riskLevel.toUpperCase()}</div>
+    let html = '';
+    for (const s of data.steps) {
+        const apyColor = s.apy >= 0 ? 'var(--bull)' : 'var(--bear)';
+        const apySign = s.apy >= 0 ? '+' : '';
+        const dirBadge = s.direction
+            ? `<span class="strategy-step__dir strategy-step__dir--${s.direction === 'LONG' ? 'long' : 'short'}">${s.direction}</span>`
+            : '';
+
+        html += `<div class="strategy-step-card">
+            <div class="strategy-step__num">${s.step}</div>
+            <div class="strategy-step__body">
+                <div class="strategy-step__action">${s.action} ${dirBadge}</div>
+                <div class="strategy-step__detail">${s.detail}</div>
+                <div class="strategy-step__meta">
+                    <span class="strategy-step__protocol">${s.protocol}</span>
+                    <span class="strategy-step__amount">${fmtUsd(s.amount)}</span>
+                    <span style="color:${apyColor};font-weight:800">${apySign}${s.apy?.toFixed(1) || '0'}% APY</span>
+                </div>
             </div>
-            <div class="strategy-card__apy">
-                <span class="strategy-card__apy-num">${s.apy.toFixed(1)}%</span>
-                <span class="strategy-card__apy-label">APY estimado</span>
-            </div>
-            <div class="strategy-card__bottom">
-                <span>${s.protocol}</span>
-                <span>${s.deltaNeutral ? 'Delta Neutral' : 'Direccional'}</span>
-            </div>
-            ${s.description ? `<div class="strategy-card__desc">${s.description.slice(0, 120)}...</div>` : ''}
         </div>`;
-    }).join('');
-}
-
-function showStrategyDetail(idx) {
-    if (!strategyData?.all_strategies?.[idx]) return;
-    const s = strategyData.all_strategies[idx];
-    const rc = RISK_COLORS[s.riskLevel] || RISK_COLORS.medio;
-    const icon = STRATEGY_ICONS[s.type] || '\u{1F4CA}';
-
-    let html = `
-        <div style="font-size:1.2rem;font-weight:800;margin-bottom:4px">${icon} ${s.name}</div>
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-            <span class="strategy-card__risk" style="background:${rc.bg};color:${rc.color};font-size:0.7rem;padding:3px 10px;border-radius:6px">${s.riskLevel.toUpperCase()}</span>
-            <span style="font-size:0.75rem;color:var(--text-3)">${s.protocol}</span>
-            ${s.deltaNeutral ? '<span style="font-size:0.75rem;color:var(--bull)">Delta Neutral</span>' : ''}
-        </div>
-        <div style="font-size:2rem;font-weight:900;color:var(--bull);margin-bottom:4px">${s.apy.toFixed(1)}% <span style="font-size:0.9rem;font-weight:600;color:var(--text-3)">APY est.</span></div>
-        ${s.tvl ? `<div style="font-size:0.75rem;color:var(--text-3);margin-bottom:16px">TVL: ${fmtUsd(s.tvl)}</div>` : ''}
-        <div style="font-size:0.82rem;color:var(--text-2);line-height:1.6;margin-bottom:16px">${s.description}</div>
-    `;
-
-    if (s.steps?.length) {
-        html += '<div style="font-size:0.72rem;font-weight:700;color:var(--accent2);text-transform:uppercase;margin-bottom:8px">Pasos para ejecutar</div>';
-        html += s.steps.map((step, i) => `<div style="display:flex;gap:10px;margin-bottom:8px;font-size:0.8rem">
-            <span style="flex-shrink:0;width:22px;height:22px;border-radius:50%;background:var(--card2);color:var(--accent2);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.7rem">${i + 1}</span>
-            <span style="color:var(--text-2);line-height:1.5">${step}</span>
-        </div>`).join('');
     }
 
-    if (s.risks?.length) {
-        html += '<div style="font-size:0.72rem;font-weight:700;color:var(--bear);text-transform:uppercase;margin:16px 0 8px">Riesgos</div>';
-        html += s.risks.map(r => `<div style="font-size:0.78rem;color:var(--text-3);margin-bottom:4px">• ${r}</div>`).join('');
+    // Warnings
+    if (data.warnings?.length) {
+        html += '<div class="strategy-warnings">';
+        html += '<div class="strategy-warnings__title">Riesgos y advertencias</div>';
+        for (const w of data.warnings) {
+            html += `<div class="strategy-warnings__item">${w}</div>`;
+        }
+        html += '</div>';
     }
 
-    html += '<div style="font-size:0.65rem;color:var(--text-3);margin-top:16px;font-style:italic">APYs estimados basados en datos actuales. Pueden variar.</div>';
+    // Rates used
+    if (data.rates_source) {
+        const r = data.rates_source;
+        html += `<div class="strategy-rates">
+            <div class="strategy-rates__title">Tasas utilizadas</div>
+            <div class="strategy-rates__grid">
+                <span>Aave Supply USDC</span><span>${r.aave_supply_usdc?.toFixed(1)}%</span>
+                <span>Aave Borrow ETH</span><span>${r.aave_borrow_eth?.toFixed(1)}%</span>
+                <span>Aave Borrow BTC</span><span>${r.aave_borrow_btc?.toFixed(1)}%</span>
+                <span>LP ETH-USDC</span><span>${r.lp_eth_usdc?.toFixed(1)}%</span>
+                <span>LP BTC-USDC</span><span>${r.lp_btc_usdc?.toFixed(1)}%</span>
+                ${r.funding_eth != null ? `<span>Funding ETH</span><span>${(r.funding_eth * 100).toFixed(4)}%/h</span>` : ''}
+                ${r.funding_btc != null ? `<span>Funding BTC</span><span>${(r.funding_btc * 100).toFixed(4)}%/h</span>` : ''}
+            </div>
+        </div>`;
+    }
 
-    document.getElementById('strategyDetailContent').innerHTML = html;
-    const panel = document.getElementById('strategyDetail');
-    panel.style.display = 'flex';
-    panel.getBoundingClientRect();
-    panel.classList.add('signal-detail--open');
+    html += `<div style="font-size:0.62rem;color:var(--text-3);text-align:center;margin-top:16px;font-style:italic">
+        APYs estimados — verificar en DeFiLlama y protocolos antes de ejecutar. ${data.calculated_at ? new Date(data.calculated_at).toLocaleString('es-ES') : ''}
+    </div>`;
+
+    list.innerHTML = html;
 }
-
-function closeStrategyDetail() {
-    const panel = document.getElementById('strategyDetail');
-    panel.classList.remove('signal-detail--open');
-    setTimeout(() => { panel.style.display = 'none'; }, 250);
-}
-
-document.getElementById('strategyDetail').addEventListener('click', function(e) {
-    if (e.target === this) closeStrategyDetail();
-});
 
 document.getElementById('strategyAmount').addEventListener('keydown', e => {
     if (e.key === 'Enter') loadStrategy();
