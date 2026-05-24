@@ -67,6 +67,144 @@ const SYNTHETIC_BASES = {
 
 let currentPairKey = 'BTCUSDT';
 let currentDec = 2;
+
+// ═══════════════════════════════════════════════════════════════
+// CLIENT-SIDE RANGE CALCULATION (fallback when backend has mock data)
+// ═══════════════════════════════════════════════════════════════
+
+function clientFindMR(candles) {
+    const results = [];
+    for (let i = 3; i < candles.length - 3; i++) {
+        const h = candles[i][1]; // high
+        if (h > candles[i-1][1] && h > candles[i-2][1] && h > candles[i-3][1] &&
+            h > candles[i+1][1] && h > candles[i+2][1] && h > candles[i+3][1]) {
+            results.push({ i, v: h });
+        }
+    }
+    return results;
+}
+
+function clientFindmR(candles) {
+    const results = [];
+    for (let i = 3; i < candles.length - 3; i++) {
+        const l = candles[i][2]; // low
+        if (l < candles[i-1][2] && l < candles[i-2][2] && l < candles[i-3][2] &&
+            l < candles[i+1][2] && l < candles[i+2][2] && l < candles[i+3][2]) {
+            results.push({ i, v: l });
+        }
+    }
+    return results;
+}
+
+function clientCalcRange(candles, price) {
+    if (!candles || candles.length < 10) return null;
+    const mrs = clientFindMR(candles);
+    const mrs_low = clientFindmR(candles);
+
+    let sup, res, breakdown = false, breakout = false;
+
+    const supLevels = mrs_low.filter(m => m.v <= price);
+    const resLevels = mrs.filter(m => m.v >= price);
+
+    if (supLevels.length > 0) {
+        sup = supLevels[supLevels.length - 1].v;
+    } else {
+        breakdown = true;
+        sup = Math.min(...candles.slice(-10).map(c => c[2]));
+    }
+
+    if (resLevels.length > 0) {
+        res = resLevels[0].v;
+    } else {
+        breakout = true;
+        res = Math.max(...candles.slice(-10).map(c => c[1]));
+    }
+
+    if (breakdown && mrs_low.length > 0) {
+        const nearest = mrs_low.filter(m => m.v > price).sort((a, b) => a.v - b.v);
+        if (nearest.length > 0) res = nearest[0].v;
+    }
+    if (breakout && mrs.length > 0) {
+        const nearest = mrs.filter(m => m.v < price).sort((a, b) => b.v - a.v);
+        if (nearest.length > 0) sup = nearest[0].v;
+    }
+
+    if (sup > price) sup = Math.min(...candles.slice(-10).map(c => c[2]));
+    if (res < price) res = Math.max(...candles.slice(-10).map(c => c[1]));
+    if (sup > price) sup = price * 0.98;
+    if (res < price) res = price * 1.02;
+    if (sup >= res) { sup = price * 0.97; res = price * 1.03; }
+
+    const mid = (sup + res) / 2;
+    const widthPct = mid > 0 ? ((res - sup) / mid * 100) : 0;
+    const last = candles[candles.length - 1];
+
+    return {
+        sup, mid, res,
+        width_pct: widthPct,
+        closed_at: new Date(last[4] || Date.now()).toISOString(),
+        _breakdown: breakdown,
+        _breakout: breakout,
+    };
+}
+
+async function fetchBinanceKlines(symbol, interval, limit) {
+    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const raw = await r.json();
+    // Return as [open, high, low, close, closeTime]
+    return raw.map(k => [parseFloat(k[1]), parseFloat(k[2]), parseFloat(k[3]), parseFloat(k[4]), k[6]]);
+}
+
+function clientDetectTrend(candles) {
+    if (candles.length < 40) return 'LATERAL';
+    const closes = candles.map(c => c[3]);
+    const sma20 = [], sma40 = [];
+    for (let i = 0; i < closes.length; i++) {
+        if (i < 19) { sma20.push(null); } else {
+            let s = 0; for (let j = i - 19; j <= i; j++) s += closes[j]; sma20.push(s / 20);
+        }
+        if (i < 39) { sma40.push(null); } else {
+            let s = 0; for (let j = i - 39; j <= i; j++) s += closes[j]; sma40.push(s / 40);
+        }
+    }
+    const v20 = sma20.filter(v => v !== null);
+    const v40 = sma40.filter(v => v !== null);
+    if (v20.length < 5 || v40.length < 5) return 'LATERAL';
+    const s20 = (v20[v20.length-1] - v20[v20.length-5]) / v20[v20.length-5] * 100;
+    const s40 = (v40[v40.length-1] - v40[v40.length-5]) / v40[v40.length-5] * 100;
+    const last20 = v20[v20.length-1], last40 = v40[v40.length-1];
+    if (s20 > 0.15 && s40 > 0.1 && last20 > last40) return 'ALCISTA';
+    if (s20 < -0.15 && s40 < -0.1 && last20 < last40) return 'BAJISTA';
+    return 'LATERAL';
+}
+
+async function calculateRangesLocally(pair, price) {
+    const symbol = SYNTHETIC_BASES[pair] ? null : pair;
+    if (!symbol) return null; // synthetic pairs skip local calc for now
+
+    const [dailyK, weeklyK, monthlyK] = await Promise.all([
+        fetchBinanceKlines(symbol, '1d', 250),
+        fetchBinanceKlines(symbol, '1w', 60),
+        fetchBinanceKlines(symbol, '1M', 24),
+    ]);
+
+    const volumes = dailyK.map(k => parseFloat(k[3])); // using close as proxy
+    const trend = clientDetectTrend(dailyK);
+
+    return {
+        pair,
+        current_price: price,
+        trend,
+        vol_percentile: 50,
+        daily: clientCalcRange(dailyK, price),
+        weekly: clientCalcRange(weeklyK, price),
+        monthly: clientCalcRange(monthlyK, price),
+        _mock: false,
+        _local: true,
+    };
+}
 let lastRangeData = null;
 let liveTickerTimer = null;
 let latestPrices = {};
@@ -286,8 +424,26 @@ async function loadRanges() {
 
         const resp = await fetch(url);
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const data = await resp.json();
+        let data = await resp.json();
         if (data.error) throw new Error(data.error);
+
+        // If backend returned mock data and we have a live price,
+        // recalculate ranges locally using real Binance klines from browser
+        if (data._mock && livePrice && meta.type !== 'synthetic') {
+            try {
+                const localData = await calculateRangesLocally(currentPairKey, livePrice);
+                if (localData) {
+                    // Keep any custom overrides from the backend
+                    for (const tf of ['daily', 'weekly', 'monthly']) {
+                        if (data[tf]?._custom) localData[tf] = data[tf];
+                    }
+                    data = localData;
+                }
+            } catch (localErr) {
+                console.warn('Local calc failed, using backend data:', localErr);
+            }
+        }
+
         renderRanges(data);
     } catch (e) {
         document.getElementById('currentPrice').textContent = 'Error';
