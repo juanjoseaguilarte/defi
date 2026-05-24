@@ -346,6 +346,7 @@ function drawChart(canvas, chartData, phaseColor) {
     if (!n) return;
 
     const sma20 = chartData.sma20 || [];
+    const sma40 = chartData.sma40 || [];
     const shiArr = chartData.swing_highs || [];
     const sloArr = chartData.swing_lows || [];
 
@@ -368,6 +369,19 @@ function drawChart(canvas, chartData, phaseColor) {
     const toY = v => PAD_T + chartH * (1 - (v - minP) / priceRange);
 
     ctx.clearRect(0, 0, W, H);
+
+    // SMA40
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(251,191,36,0.5)';
+    ctx.lineWidth = 1.2;
+    let first40 = true;
+    sma40.forEach((v, i) => {
+        if (v === null) return;
+        const x = toX(i), y = toY(v);
+        if (first40) { ctx.moveTo(x, y); first40 = false; }
+        else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
 
     // SMA20
     ctx.beginPath();

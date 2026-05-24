@@ -1,11 +1,11 @@
 const { fetchKlines, fetchAllPrices } = require('./binance');
-const { sma, percentile, volPercentile } = require('./ranges');
+const { sma, findMR, findmR, volPercentile } = require('./ranges');
 const { detectPhase, PHASE_STYLES } = require('./phases');
 
 const COINS = ['BTC', 'ETH', 'SOL', 'UNI', 'JUP', 'AAVE'];
 const SIGNAL_TFS = {
-    'Diario': { interval: '1d', limit: 50 },
-    '6H':     { interval: '6h', limit: 80 },
+    'Diario': { interval: '1d', limit: 250 },
+    '6H':     { interval: '6h', limit: 250 },
 };
 
 const SIGNAL_STYLES = {
@@ -16,95 +16,59 @@ const SIGNAL_STYLES = {
     watch:       { bg: 'rgba(167,139,250,0.15)', color: '#a78bfa', emoji: '👀', label: 'Vigilar' },
 };
 
-function detectWyckoff(candles) {
-    if (candles.length < 10) return null;
-    const recent = candles.slice(-5);
-    const prior = candles.slice(-10, -5);
-
-    const priorLow = Math.min(...prior.map(c => c.low));
-    const priorHigh = Math.max(...prior.map(c => c.high));
-
-    const lastCandle = recent[recent.length - 1];
-    const prevCandle = recent[recent.length - 2];
-
-    if (prevCandle.low < priorLow && lastCandle.close > priorLow) {
-        return 'spring';
-    }
-
-    if (prevCandle.high > priorHigh && lastCandle.close < priorHigh) {
-        return 'upthrust';
-    }
-
-    return null;
-}
-
-function findNearestLevels(candles, currentPrice) {
-    const swingHighs = [];
-    const swingLows = [];
-
-    for (let i = 2; i < candles.length - 2; i++) {
-        if (candles[i].high > candles[i - 1].high &&
-            candles[i].high > candles[i - 2].high &&
-            candles[i].high > candles[i + 1].high &&
-            candles[i].high > candles[i + 2].high) {
-            swingHighs.push(candles[i].high);
-        }
-        if (candles[i].low < candles[i - 1].low &&
-            candles[i].low < candles[i - 2].low &&
-            candles[i].low < candles[i + 1].low &&
-            candles[i].low < candles[i + 2].low) {
-            swingLows.push(candles[i].low);
-        }
-    }
-
-    const supports = swingLows.filter(l => l < currentPrice).sort((a, b) => b - a);
-    const resists = swingHighs.filter(h => h > currentPrice).sort((a, b) => a - b);
-
-    return {
-        nearest_support: supports[0] || null,
-        nearest_resist: resists[0] || null,
-    };
-}
-
 function generateSignal(candles, currentPrice, phase) {
     const closes = candles.map(c => c.close);
     const volumes = candles.map(c => c.volume);
-    const lows = candles.map(c => c.low);
-    const highs = candles.map(c => c.high);
 
     const sma20 = sma(closes, 20);
     const lastSma = sma20.filter(v => v !== null).pop() || currentPrice;
     const smaDistance = ((currentPrice - lastSma) / lastSma) * 100;
 
-    const sup = percentile(lows, 10);
-    const res = percentile(highs, 90);
-    const range = res - sup;
-    const posInRange = range > 0 ? ((currentPrice - sup) / range) * 100 : 50;
+    const mrs = findMR(candles);
+    const mrs_low = findmR(candles);
+
+    const supports = mrs_low.filter(m => m.v < currentPrice).sort((a, b) => b.v - a.v);
+    const resists = mrs.filter(m => m.v > currentPrice).sort((a, b) => a.v - b.v);
+    const nearest_support = supports[0]?.v || null;
+    const nearest_resist = resists[0]?.v || null;
 
     const volPct = volPercentile(volumes);
-    const wyckoff = detectWyckoff(candles);
-    const levels = findNearestLevels(candles, currentPrice);
 
     let score = 50;
     const reasons = [];
 
-    if (phase.type === 'bull') { score += 10; reasons.push('Fase alcista activa'); }
-    if (phase.type === 'bear') { score -= 10; reasons.push('Fase bajista activa'); }
-    if (phase.type === 'accumulation') { score += 15; reasons.push('Zona de acumulación'); }
-    if (phase.type === 'distribution') { score -= 15; reasons.push('Zona de distribución'); }
+    // Phase alignment
+    if (phase.type === 'bull') { score += 12; reasons.push('Etapa 2 activa (alcista)'); }
+    if (phase.type === 'bear') { score -= 12; reasons.push('Etapa 4 activa (bajista)'); }
+    if (phase.type === 'accumulation') { score += 15; reasons.push('Etapa 1 — zona de acumulación'); }
+    if (phase.type === 'distribution') { score -= 15; reasons.push('Etapa 3 — zona de distribución'); }
 
-    if (posInRange < 20) { score += 15; reasons.push('Precio cerca de soporte'); }
-    else if (posInRange > 80) { score -= 15; reasons.push('Precio cerca de resistencia'); }
+    // Traps and special phases
+    if (phase.phase.includes('Shakeout')) { score += 18; reasons.push('Shakeout: trampa alcista confirmada'); }
+    if (phase.phase.includes('Checkout')) { score -= 18; reasons.push('Checkout: trampa bajista confirmada'); }
+    if (phase.phase.includes('Acunamiento')) { score += 10; reasons.push('Acunamiento: precio apoyándose en SMA20'); }
+    if (phase.phase.includes('Paso Directo') && phase.type === 'bull') { score += 15; reasons.push('Paso directo alcista'); }
+    if (phase.phase.includes('Paso Directo') && phase.type === 'bear') { score -= 15; reasons.push('Paso directo bajista'); }
+    if (phase.phase.includes('90%')) { score += (phase.type === 'accumulation' ? 8 : -8); }
 
+    // SMA20 distance
     if (smaDistance > 0 && smaDistance < 2) { score += 5; reasons.push('Precio ligeramente sobre SMA20'); }
     if (smaDistance < 0 && smaDistance > -2) { score += 5; reasons.push('Cerca de cruce alcista SMA20'); }
-    if (smaDistance < -5) { score -= 10; reasons.push('Lejos por debajo de SMA20'); }
+    if (smaDistance < -5) { score -= 8; reasons.push('Lejos por debajo de SMA20'); }
     if (smaDistance > 5) { score -= 5; reasons.push('Sobreextendido sobre SMA20'); }
 
-    if (volPct > 75) { score += 5; reasons.push(`Volumen alto (percentil ${volPct}%)`); }
+    // Position relative to MR/mR levels
+    if (nearest_support && nearest_resist) {
+        const range = nearest_resist - nearest_support;
+        if (range > 0) {
+            const posInRange = ((currentPrice - nearest_support) / range) * 100;
+            if (posInRange < 20) { score += 10; reasons.push('Precio cerca de mR (soporte relevante)'); }
+            else if (posInRange > 80) { score -= 10; reasons.push('Precio cerca de MR (resistencia relevante)'); }
+        }
+    }
 
-    if (wyckoff === 'spring') { score += 15; reasons.push('Patrón Spring detectado (alcista)'); }
-    if (wyckoff === 'upthrust') { score -= 15; reasons.push('Patrón Upthrust detectado (bajista)'); }
+    // Volume
+    if (volPct > 75) { score += 5; reasons.push(`Volumen alto (percentil ${volPct}%)`); }
 
     score = Math.max(0, Math.min(100, score));
 
@@ -120,9 +84,9 @@ function generateSignal(candles, currentPrice, phase) {
         score,
         reasons,
         sma20_distance: parseFloat(smaDistance.toFixed(2)),
-        nearest_support: levels.nearest_support,
-        nearest_resist: levels.nearest_resist,
-        wyckoff_pattern: wyckoff,
+        nearest_support,
+        nearest_resist,
+        wyckoff_pattern: phase.phase.includes('Shakeout') ? 'spring' : (phase.phase.includes('Checkout') ? 'upthrust' : null),
         current_phase: phase.phase,
         phase_style: PHASE_STYLES[phase.type],
         style,
