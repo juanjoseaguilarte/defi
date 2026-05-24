@@ -210,7 +210,12 @@ function renderRanges(data) {
         if (closedEl) closedEl.textContent = fmtClosedAt(d.closed_at);
 
         const widthEl = document.getElementById('width_' + key);
-        if (widthEl && d.width_pct) widthEl.textContent = `Rango: ${d.width_pct.toFixed(1)}%`;
+        if (widthEl) {
+            let widthText = d.width_pct ? `Rango: ${d.width_pct.toFixed(1)}%` : '';
+            if (d._breakdown) widthText = 'BREAKDOWN ↓';
+            if (d._breakout) widthText = 'BREAKOUT ↑';
+            widthEl.textContent = widthText;
+        }
 
         renderBar(key, d.sup, d.mid, d.res, price, dec);
     }
@@ -910,3 +915,66 @@ async function loadAaveActions() {
         el.innerHTML = '<div class="aave-timeline__empty">Error al cargar</div>';
     }
 }
+
+// ═══════════════════════════════════════════════════════════════
+// AUTO-UPDATE — Check for new version every 60s
+// ═══════════════════════════════════════════════════════════════
+
+let currentBuild = null;
+let updateAvailable = false;
+
+async function checkVersion() {
+    try {
+        const r = await fetch(`${APP_BASE}/api/version`, { cache: 'no-store' });
+        if (!r.ok) return;
+        const data = await r.json();
+
+        if (currentBuild === null) {
+            currentBuild = data.build;
+            return;
+        }
+
+        if (data.build !== currentBuild && !updateAvailable) {
+            updateAvailable = true;
+            document.getElementById('updateBanner').style.display = 'flex';
+
+            if ('serviceWorker' in navigator) {
+                const reg = await navigator.serviceWorker.getRegistration();
+                if (reg) {
+                    reg.update();
+                    if (reg.waiting) reg.waiting.postMessage('skipWaiting');
+                }
+            }
+        }
+    } catch (_) {}
+}
+
+function applyUpdate() {
+    document.getElementById('updateBanner').style.display = 'none';
+    if ('caches' in window) {
+        caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))));
+    }
+    location.reload(true);
+}
+
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+        reg.addEventListener('updatefound', () => {
+            const newWorker = reg.installing;
+            if (newWorker) {
+                newWorker.addEventListener('statechange', () => {
+                    if (newWorker.state === 'activated' && currentBuild !== null) {
+                        checkVersion();
+                    }
+                });
+            }
+        });
+    });
+
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (updateAvailable) location.reload();
+    });
+}
+
+checkVersion();
+setInterval(checkVersion, 60000);

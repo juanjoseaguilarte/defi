@@ -742,6 +742,30 @@ input, select { font-family: var(--font); }
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   UPDATE BANNER
+   ═══════════════════════════════════════════════════════════════ */
+.update-banner {
+    position: fixed; top: 0; left: 0; right: 0;
+    z-index: 9000;
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    padding: 10px 16px;
+    background: linear-gradient(135deg, var(--accent), #4f46e5);
+    color: #fff; font-size: 0.82rem; font-weight: 700;
+    animation: banner-in 0.3s ease-out;
+}
+@keyframes banner-in {
+    from { transform: translateY(-100%); }
+    to   { transform: translateY(0); }
+}
+.update-banner button {
+    padding: 5px 14px; border-radius: 6px;
+    background: #fff; color: var(--accent);
+    font-size: 0.75rem; font-weight: 800;
+    border: none; cursor: pointer;
+}
+.update-banner button:active { opacity: 0.8; }
+
+/* ═══════════════════════════════════════════════════════════════
    SCROLLBAR
    ═══════════════════════════════════════════════════════════════ */
 .page-content::-webkit-scrollbar { width: 4px; }

@@ -100,37 +100,70 @@ function detectTrainTracks(sma20Arr, sma40Arr) {
 function calculateRangesFromCandles(candles, currentPrice) {
     if (candles.length < 10) return null;
 
-    const closes = candles.map(c => c.close);
-    const sma20 = sma(closes, 20);
-
     const mrs = findMR(candles);
     const mrs_low = findmR(candles);
 
-    let sup, res;
+    let sup, res, breakdown = false, breakout = false;
 
-    // Support = most recent mR below price, fallback to most recent mR, fallback to lowest low
-    const mrsBelow = mrs_low.filter(m => m.v <= currentPrice);
-    if (mrsBelow.length > 0) {
-        sup = mrsBelow[mrsBelow.length - 1].v;
-    } else if (mrs_low.length > 0) {
-        sup = mrs_low[mrs_low.length - 1].v;
+    const supLevels = mrs_low.filter(m => m.v <= currentPrice);
+    const resLevels = mrs.filter(m => m.v >= currentPrice);
+
+    // ── Support ──
+    if (supLevels.length > 0) {
+        sup = supLevels[supLevels.length - 1].v;
     } else {
-        sup = Math.min(...candles.slice(-20).map(c => c.low));
-    }
-
-    // Resistance = nearest MR above price, fallback to most recent MR, fallback to highest high
-    const mrsAbove = mrs.filter(m => m.v >= currentPrice);
-    if (mrsAbove.length > 0) {
-        res = mrsAbove[0].v;
-    } else if (mrs.length > 0) {
-        res = mrs[mrs.length - 1].v;
-    } else {
-        res = Math.max(...candles.slice(-20).map(c => c.high));
-    }
-
-    if (sup >= res) {
+        // BREAKDOWN: price fell below ALL mR pivots
+        // Use lowest low of recent candles as new support floor
+        breakdown = true;
         sup = Math.min(...candles.slice(-10).map(c => c.low));
+    }
+
+    // ── Resistance ──
+    if (resLevels.length > 0) {
+        res = resLevels[0].v;
+    } else {
+        // BREAKOUT: price rose above ALL MR pivots
+        // Use highest high of recent candles as new resistance ceiling
+        breakout = true;
         res = Math.max(...candles.slice(-10).map(c => c.high));
+    }
+
+    // When price broke down, the nearest mR ABOVE becomes resistance
+    // (broken support flips to resistance — Power 4 rule)
+    if (breakdown && mrs_low.length > 0) {
+        const nearestmRAbove = mrs_low
+            .filter(m => m.v > currentPrice)
+            .sort((a, b) => a.v - b.v);
+        if (nearestmRAbove.length > 0) {
+            res = nearestmRAbove[0].v;
+        }
+    }
+
+    // When price broke up, the nearest MR BELOW becomes support
+    // (broken resistance flips to support — Power 4 rule)
+    if (breakout && mrs.length > 0) {
+        const nearestMRBelow = mrs
+            .filter(m => m.v < currentPrice)
+            .sort((a, b) => b.v - a.v);
+        if (nearestMRBelow.length > 0) {
+            sup = nearestMRBelow[0].v;
+        }
+    }
+
+    // Ensure support is below price and resistance is above price
+    if (sup > currentPrice) {
+        sup = Math.min(...candles.slice(-10).map(c => c.low));
+    }
+    if (res < currentPrice) {
+        res = Math.max(...candles.slice(-10).map(c => c.high));
+    }
+    // If still wrong after candle-based fallback, use price with buffer
+    if (sup > currentPrice) sup = currentPrice * 0.98;
+    if (res < currentPrice) res = currentPrice * 1.02;
+    // Safety: ensure sup < res
+    if (sup >= res) {
+        sup = currentPrice * 0.97;
+        res = currentPrice * 1.03;
     }
 
     const mid = (sup + res) / 2;
@@ -143,6 +176,8 @@ function calculateRangesFromCandles(candles, currentPrice) {
         res: parseFloat(res.toFixed(8)),
         width_pct: parseFloat(widthPct.toFixed(2)),
         closed_at: new Date(lastCandle.ts).toISOString(),
+        _breakdown: breakdown,
+        _breakout: breakout,
     };
 }
 
