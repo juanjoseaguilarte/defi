@@ -103,18 +103,19 @@ function clientCalcRange(candles, price) {
 
     let sup, res, breakdown = false, breakout = false;
 
-    const supLevels = mrs_low.filter(m => m.v <= price);
-    const resLevels = mrs.filter(m => m.v >= price);
+    // Sort by proximity to price, not chronological order
+    const supLevels = mrs_low.filter(m => m.v <= price).sort((a, b) => b.v - a.v);
+    const resLevels = mrs.filter(m => m.v >= price).sort((a, b) => a.v - b.v);
 
     if (supLevels.length > 0) {
-        sup = supLevels[supLevels.length - 1].v;
+        sup = supLevels[0].v; // nearest mR below price
     } else {
         breakdown = true;
         sup = Math.min(...candles.slice(-10).map(c => c[2]));
     }
 
     if (resLevels.length > 0) {
-        res = resLevels[0].v;
+        res = resLevels[0].v; // nearest MR above price
     } else {
         breakout = true;
         res = Math.max(...candles.slice(-10).map(c => c[1]));
@@ -184,22 +185,22 @@ async function calculateRangesLocally(pair, price) {
     const symbol = SYNTHETIC_BASES[pair] ? null : pair;
     if (!symbol) return null; // synthetic pairs skip local calc for now
 
-    const [dailyK, weeklyK, monthlyK] = await Promise.all([
-        fetchBinanceKlines(symbol, '1d', 250),
-        fetchBinanceKlines(symbol, '1w', 60),
-        fetchBinanceKlines(symbol, '1M', 24),
+    // Fetch enough for trend (SMA40 needs 40+), but use shorter windows for pivots
+    const [dailyKFull, weeklyKFull, monthlyK] = await Promise.all([
+        fetchBinanceKlines(symbol, '1d', 60),
+        fetchBinanceKlines(symbol, '1w', 20),
+        fetchBinanceKlines(symbol, '1M', 12),
     ]);
 
-    const volumes = dailyK.map(k => parseFloat(k[3])); // using close as proxy
-    const trend = clientDetectTrend(dailyK);
+    const trend = clientDetectTrend(dailyKFull);
 
     return {
         pair,
         current_price: price,
         trend,
         vol_percentile: 50,
-        daily: clientCalcRange(dailyK, price),
-        weekly: clientCalcRange(weeklyK, price),
+        daily: clientCalcRange(dailyKFull.slice(-30), price),
+        weekly: clientCalcRange(weeklyKFull.slice(-12), price),
         monthly: clientCalcRange(monthlyK, price),
         _local: true,
     };

@@ -105,12 +105,13 @@ function calculateRangesFromCandles(candles, currentPrice) {
 
     let sup, res, breakdown = false, breakout = false;
 
-    const supLevels = mrs_low.filter(m => m.v <= currentPrice);
-    const resLevels = mrs.filter(m => m.v >= currentPrice);
+    // Sort by proximity to price, not chronological order
+    const supLevels = mrs_low.filter(m => m.v <= currentPrice).sort((a, b) => b.v - a.v);
+    const resLevels = mrs.filter(m => m.v >= currentPrice).sort((a, b) => a.v - b.v);
 
     // ── Support ──
     if (supLevels.length > 0) {
-        sup = supLevels[supLevels.length - 1].v;
+        sup = supLevels[0].v; // nearest mR below price
     } else {
         // BREAKDOWN: price fell below ALL mR pivots
         // Use lowest low of recent candles as new support floor
@@ -184,19 +185,20 @@ function calculateRangesFromCandles(candles, currentPrice) {
 async function getRangesForPair(pair, livePriceOverride) {
     const [prices, dailyCandles, weeklyCandles, monthlyCandles] = await Promise.all([
         fetchAllPrices(),
-        fetchKlines(pair, '1d', 250),
-        fetchKlines(pair, '1w', 60),
-        fetchKlines(pair, '1M', 24),
+        fetchKlines(pair, '1d', 60),
+        fetchKlines(pair, '1w', 20),
+        fetchKlines(pair, '1M', 12),
     ]);
 
     // Use live price from frontend if provided (more reliable than backend fetch)
     const currentPrice = livePriceOverride || prices[pair] || 0;
 
-    const daily = calculateRangesFromCandles(dailyCandles, currentPrice);
-    const weekly = calculateRangesFromCandles(weeklyCandles, currentPrice);
+    // Use shorter windows for pivot detection (recent levels only)
+    const daily = calculateRangesFromCandles(dailyCandles.slice(-30), currentPrice);
+    const weekly = calculateRangesFromCandles(weeklyCandles.slice(-12), currentPrice);
     const monthly = calculateRangesFromCandles(monthlyCandles, currentPrice);
 
-    // Train tracks from daily SMA20/SMA40
+    // Train tracks from full daily data (SMA40 needs 40+ candles)
     const closes = dailyCandles.map(c => c.close);
     const sma20 = sma(closes, 20);
     const sma40 = sma(closes, 40);
