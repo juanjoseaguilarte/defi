@@ -188,7 +188,7 @@ function buildBearStrategy(amount, rates, phases, prices) {
     totalApy += supplyApy * (stableAmount / amount);
 
     const shortMargin = Math.floor(amount * 0.20);
-    const shortLev = 5;
+    const shortLev = 3;
     const shortExposure = shortMargin * shortLev;
     const fundApy = getFundingApy(rates, asset, 'SHORT');
     const sl = calcStopLoss(price, shortLev, 'SHORT');
@@ -270,7 +270,7 @@ function buildBullStrategy(amount, rates, phases, prices) {
     totalApy += (levApy - lpApy) * (lpAmount / amount);
 
     const longMargin = Math.floor(amount * 0.05);
-    const longLev = 10;
+    const longLev = 3;
     const longSl = calcStopLoss(price, longLev, 'LONG');
     const longTp = calcTakeProfit(price, longLev, 'LONG');
     const longLiq = calcLiquidationPrice(price, longLev, 'LONG');
@@ -392,7 +392,7 @@ function buildDistributionStrategy(amount, rates, phases, prices) {
     });
 
     const shortMargin = Math.floor(amount * 0.15);
-    const shortLev = 5;
+    const shortLev = 3;
     const sl = calcStopLoss(price, shortLev, 'SHORT');
     const tp = calcTakeProfit(price, shortLev, 'SHORT');
     const liq = calcLiquidationPrice(price, shortLev, 'SHORT');
