@@ -1,6 +1,7 @@
 const { fetchAllPrices } = require('./binance');
 
-const STABLECOINS = ['USDC', 'USDT', 'DAI', 'FRAX'];
+const ALLOWED_TOKENS = ['BTC', 'ETH', 'USDC', 'WBTC', 'WETH'];
+const STABLECOINS = ['USDC'];
 
 async function tryFetch(url, timeoutMs = 10000) {
     const controller = new AbortController();
@@ -39,6 +40,14 @@ async function tryPost(url, body, timeoutMs = 10000) {
 // DATA FETCHERS
 // ═══════════════════════════════════════════════════════════════
 
+function poolHasAllowedTokens(symbol) {
+    if (!symbol) return false;
+    const parts = symbol.toUpperCase().split(/[-\/]/);
+    return parts.every(p =>
+        ALLOWED_TOKENS.some(t => p.includes(t))
+    );
+}
+
 async function fetchDefiLlamaPools() {
     try {
         const data = await tryFetch('https://yields.llama.fi/pools');
@@ -46,7 +55,8 @@ async function fetchDefiLlamaPools() {
         return data.data.filter(p =>
             p.chain === 'Arbitrum' &&
             p.tvlUsd > 100000 &&
-            p.apy > 0
+            p.apy > 0 &&
+            poolHasAllowedTokens(p.symbol)
         );
     } catch (_) {
         return [];
@@ -120,8 +130,8 @@ function categorizePool(pool) {
 }
 
 function isStablePair(symbol) {
-    const parts = (symbol || '').toUpperCase().split('-');
-    return parts.length >= 2 && parts.every(p => STABLECOINS.some(s => p.includes(s)));
+    const parts = (symbol || '').toUpperCase().split(/[-\/]/);
+    return parts.length >= 2 && parts.every(p => p.includes('USDC') || p.includes('USDT') || p.includes('DAI'));
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -226,7 +236,7 @@ function generateStrategies(amount, pools, gmxFunding, hlFunding, trend) {
     }
 
     // ── 4) Funding Rate Arbitrage (medium-high risk) ──
-    const fundingCoins = ['BTC', 'ETH', 'SOL'];
+    const fundingCoins = ['BTC', 'ETH'];
     for (const coin of fundingCoins) {
         const hlRate = hlFunding.find(f => f.coin === coin);
         if (!hlRate || Math.abs(hlRate.annualizedRate) < 5) continue;
