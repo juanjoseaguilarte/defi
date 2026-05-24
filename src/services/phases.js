@@ -236,7 +236,53 @@ function detectPhase(candles, currentPrice) {
         }
     }
 
-    // ── E2: Alcista ──
+    // ── Strong price signal: price far from SMA20 (catches cases where SMA40 lags) ──
+    const priceSmaDistance = ((currentPrice - lastSma20) / lastSma20) * 100;
+
+    if (priceSmaDistance < -8 && slope20 < 0) {
+        const reasons = [`Precio ${priceSmaDistance.toFixed(1)}% por debajo de SMA20`, 'SMA20 con pendiente negativa'];
+        if (color === 'red') reasons.push('SMA20 roja');
+        if (decliningMR(allMR)) reasons.push('MR decrecientes');
+        return {
+            type: 'bear',
+            phase: 'Etapa 4 — Declive',
+            reason: reasons.join('. '),
+        };
+    }
+
+    if (priceSmaDistance > 8 && slope20 > 0) {
+        const reasons = [`Precio +${priceSmaDistance.toFixed(1)}% por encima de SMA20`, 'SMA20 con pendiente positiva'];
+        if (color === 'green') reasons.push('SMA20 verde');
+        if (risingmR(allmR)) reasons.push('mR crecientes');
+        return {
+            type: 'bull',
+            phase: 'Etapa 2 — Avance',
+            reason: reasons.join('. '),
+        };
+    }
+
+    // ── Price below SMA20 with clear negative slope (even without full train tracks) ──
+    if (!aboveSma20 && slope20 < -0.5 && color === 'red') {
+        const reasons = ['Precio por debajo de SMA20 roja', `Pendiente SMA20: ${slope20.toFixed(2)}%`];
+        if (slope40 < 0) {
+            reasons.push('SMA40 también bajando');
+            return { type: 'bear', phase: 'Etapa 4 — Declive', reason: reasons.join('. ') };
+        }
+        reasons.push('SMA40 aún no confirma (retrasada)');
+        return { type: 'bear', phase: 'Etapa 4 — Declive (temprano)', reason: reasons.join('. ') };
+    }
+
+    if (aboveSma20 && slope20 > 0.5 && color === 'green') {
+        const reasons = ['Precio por encima de SMA20 verde', `Pendiente SMA20: +${slope20.toFixed(2)}%`];
+        if (slope40 > 0) {
+            reasons.push('SMA40 también subiendo');
+            return { type: 'bull', phase: 'Etapa 2 — Avance', reason: reasons.join('. ') };
+        }
+        reasons.push('SMA40 aún no confirma (retrasada)');
+        return { type: 'bull', phase: 'Etapa 2 — Avance (temprano)', reason: reasons.join('. ') };
+    }
+
+    // ── E2: Alcista (with full train tracks) ──
     if (tracks === 'up' && aboveSma20 && color === 'green') {
         reasons.push('Vías del tren alcistas (SMA20 y SMA40 subiendo en paralelo)');
         reasons.push('Precio por encima de SMA20 verde');
