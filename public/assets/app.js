@@ -201,7 +201,6 @@ async function calculateRangesLocally(pair, price) {
         daily: clientCalcRange(dailyK, price),
         weekly: clientCalcRange(weeklyK, price),
         monthly: clientCalcRange(monthlyK, price),
-        _mock: false,
         _local: true,
     };
 }
@@ -409,7 +408,6 @@ async function loadRanges() {
         await fetchLivePrices();
 
         const meta = PAIR_META[currentPairKey] || {};
-        const apiPath = meta.type === 'synthetic' ? '/api/synthetic' : '/api/ranges';
 
         let livePrice;
         if (latestPrices[currentPairKey]) {
@@ -419,30 +417,36 @@ async function loadRanges() {
             if (latestPrices[b] && latestPrices[q]) livePrice = latestPrices[b] / latestPrices[q];
         }
 
-        let url = `${APP_BASE}${apiPath}?pair=${currentPairKey}`;
-        if (livePrice) url += `&price=${livePrice}`;
+        if (!livePrice) throw new Error('No se pudo obtener precio real de Binance');
 
-        const resp = await fetch(url);
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        let data = await resp.json();
-        if (data.error) throw new Error(data.error);
-
-        // If backend returned mock data and we have a live price,
-        // recalculate ranges locally using real Binance klines from browser
-        if (data._mock && livePrice && meta.type !== 'synthetic') {
-            try {
-                const localData = await calculateRangesLocally(currentPairKey, livePrice);
-                if (localData) {
-                    // Keep any custom overrides from the backend
-                    for (const tf of ['daily', 'weekly', 'monthly']) {
-                        if (data[tf]?._custom) localData[tf] = data[tf];
-                    }
-                    data = localData;
-                }
-            } catch (localErr) {
-                console.warn('Local calc failed, using backend data:', localErr);
-            }
+        // 1) Calculate ranges locally from real Binance klines (browser can always reach Binance)
+        let data;
+        if (meta.type !== 'synthetic') {
+            data = await calculateRangesLocally(currentPairKey, livePrice);
+            if (!data) throw new Error('No se pudieron calcular rangos');
+        } else {
+            // Synthetic pairs: try backend
+            const apiPath = '/api/synthetic';
+            let url = `${APP_BASE}${apiPath}?pair=${currentPairKey}&price=${livePrice}`;
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            data = await resp.json();
+            if (data.error) throw new Error(data.error);
+            data.current_price = livePrice;
         }
+
+        // 2) Apply custom admin overrides from backend
+        try {
+            const overResp = await fetch(`${APP_BASE}/api/ranges?pair=${currentPairKey}&price=${livePrice}`);
+            if (overResp.ok) {
+                const overData = await overResp.json();
+                if (!overData.error) {
+                    for (const tf of ['daily', 'weekly', 'monthly']) {
+                        if (overData[tf]?._custom) data[tf] = overData[tf];
+                    }
+                }
+            }
+        } catch (_) {}
 
         renderRanges(data);
     } catch (e) {

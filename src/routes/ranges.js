@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const { getRangesForPair } = require('../services/ranges');
-const { isUsingMockData } = require('../services/binance');
 const { getDb } = require('../../db/init');
 
 const VALID_PAIRS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'UNIUSDT', 'JUPUSDT', 'AAVEUSDT'];
@@ -27,7 +26,6 @@ router.get('/', async (req, res) => {
 
     try {
         const data = await getRangesForPair(pair, livePrice);
-        data._mock = isUsingMockData();
 
         const custom = getCustomRanges(pair);
         for (const tf of ['daily', 'weekly', 'monthly']) {
@@ -41,8 +39,8 @@ router.get('/', async (req, res) => {
 
         res.json(data);
     } catch (e) {
-        console.error('Ranges error:', e);
-        res.status(500).json({ error: 'Error al obtener rangos' });
+        console.error('Ranges error:', e.message);
+        res.status(502).json({ error: 'No se pudieron obtener datos reales: ' + e.message });
     }
 });
 

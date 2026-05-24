@@ -12,7 +12,6 @@ const COINGECKO_IDS = {
 };
 
 const cache = new Map();
-let isMockData = false;
 
 function getCached(key, ttlMs) {
     const entry = cache.get(key);
@@ -24,16 +23,9 @@ function setCache(key, data) {
     cache.set(key, { data, ts: Date.now() });
 }
 
-function isUsingMockData() { return isMockData; }
-
 const INTERVAL_TTL = {
     '1d': 60_000, '1w': 300_000, '1M': 600_000,
     '4h': 60_000, '6h': 60_000, '1h': 30_000,
-};
-
-const FALLBACK_PRICES = {
-    BTCUSDT: 108000, ETHUSDT: 2550, SOLUSDT: 178,
-    UNIUSDT: 7.2, JUPUSDT: 0.62, AAVEUSDT: 270,
 };
 
 async function tryFetch(url, timeoutMs = 8000) {
@@ -51,12 +43,15 @@ async function tryFetch(url, timeoutMs = 8000) {
 }
 
 async function fetchWithMirrors(path) {
+    const errors = [];
     for (const base of BINANCE_ENDPOINTS) {
         try {
             return await tryFetch(base + path);
-        } catch (_) {}
+        } catch (e) {
+            errors.push(`${base}: ${e.message}`);
+        }
     }
-    throw new Error('All Binance endpoints failed');
+    throw new Error('Binance no accesible: ' + errors.join('; '));
 }
 
 async function fetchPricesFromCoinGecko(symbols) {
@@ -68,7 +63,7 @@ async function fetchPricesFromCoinGecko(symbols) {
         const id = COINGECKO_IDS[sym];
         if (id && data[id]?.usd) map[sym] = data[id].usd;
     }
-    if (Object.keys(map).length === 0) throw new Error('No prices from CoinGecko');
+    if (Object.keys(map).length === 0) throw new Error('CoinGecko no devolvió precios');
     return map;
 }
 
@@ -83,7 +78,6 @@ async function fetchPrices(symbols) {
         const arr = await fetchWithMirrors(url);
         const map = {};
         arr.forEach(t => { map[t.symbol] = parseFloat(t.price); });
-        isMockData = false;
         setCache(key, map);
         return map;
     } catch (_) {}
@@ -91,44 +85,11 @@ async function fetchPrices(symbols) {
     // Try CoinGecko
     try {
         const map = await fetchPricesFromCoinGecko(symbols);
-        isMockData = false;
         setCache(key, map);
         return map;
     } catch (_) {}
 
-    // Fallback mock
-    isMockData = true;
-    const map = {};
-    symbols.forEach(s => {
-        map[s] = FALLBACK_PRICES[s] || 100;
-    });
-    setCache(key, map);
-    return map;
-}
-
-function generateMockCandles(basePrice, interval, limit) {
-    const candles = [];
-    const now = Date.now();
-    const msPerCandle = {
-        '1d': 86400000, '1w': 604800000, '1M': 2592000000,
-        '4h': 14400000, '6h': 21600000, '1h': 3600000,
-    };
-    const step = msPerCandle[interval] || 86400000;
-    let price = basePrice * (0.85 + Math.random() * 0.1);
-
-    for (let i = 0; i < limit; i++) {
-        const volatility = basePrice * 0.015;
-        const drift = (Math.random() - 0.48) * volatility;
-        const open = price;
-        const close = open + drift;
-        const high = Math.max(open, close) + Math.random() * volatility * 0.5;
-        const low = Math.min(open, close) - Math.random() * volatility * 0.5;
-        const volume = 1000 + Math.random() * 5000;
-
-        candles.push({ ts: now - (limit - i) * step, open, high, low, close, volume });
-        price = close;
-    }
-    return candles;
+    throw new Error('No se pudieron obtener precios reales de ninguna fuente');
 }
 
 async function fetchKlines(symbol, interval, limit = 100) {
@@ -138,26 +99,17 @@ async function fetchKlines(symbol, interval, limit = 100) {
     if (hit) return hit;
 
     const path = `/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
-    try {
-        const raw = await fetchWithMirrors(path);
-        const candles = raw.map(k => ({
-            ts: k[0],
-            open: parseFloat(k[1]),
-            high: parseFloat(k[2]),
-            low: parseFloat(k[3]),
-            close: parseFloat(k[4]),
-            volume: parseFloat(k[5]),
-        }));
-        isMockData = false;
-        setCache(key, candles);
-        return candles;
-    } catch (_) {
-        isMockData = true;
-        const basePrice = FALLBACK_PRICES[symbol] || 100;
-        const candles = generateMockCandles(basePrice, interval, limit);
-        setCache(key, candles);
-        return candles;
-    }
+    const raw = await fetchWithMirrors(path);
+    const candles = raw.map(k => ({
+        ts: k[0],
+        open: parseFloat(k[1]),
+        high: parseFloat(k[2]),
+        low: parseFloat(k[3]),
+        close: parseFloat(k[4]),
+        volume: parseFloat(k[5]),
+    }));
+    setCache(key, candles);
+    return candles;
 }
 
 async function fetchAllPrices() {
@@ -165,13 +117,4 @@ async function fetchAllPrices() {
     return fetchPrices(symbols);
 }
 
-// Accept overrides from frontend (real browser prices)
-let priceOverrides = {};
-function setPriceOverrides(overrides) {
-    priceOverrides = { ...overrides };
-}
-function getPriceOverrides() {
-    return priceOverrides;
-}
-
-module.exports = { fetchPrices, fetchKlines, fetchAllPrices, isUsingMockData, setPriceOverrides, getPriceOverrides };
+module.exports = { fetchPrices, fetchKlines, fetchAllPrices };

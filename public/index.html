@@ -341,8 +341,12 @@
 
 <!-- Update banner -->
 <div id="updateBanner" class="update-banner" style="display:none">
-    <span>Nueva versión disponible</span>
-    <button onclick="applyUpdate()">Actualizar</button>
+    <div class="update-banner__box">
+        <div class="update-banner__icon">&#x1F504;</div>
+        <div class="update-banner__title">Nueva versión disponible</div>
+        <div class="update-banner__sub">Se ha actualizado la aplicación. Recarga para usar la última versión.</div>
+        <button class="update-banner__btn" onclick="applyUpdate()">Actualizar ahora</button>
+    </div>
 </div>
 
 <script src="/assets/app.js"></script>

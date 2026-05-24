@@ -745,25 +745,48 @@ input, select { font-family: var(--font); }
    UPDATE BANNER
    ═══════════════════════════════════════════════════════════════ */
 .update-banner {
-    position: fixed; top: 0; left: 0; right: 0;
+    position: fixed; inset: 0;
     z-index: 9000;
-    display: flex; align-items: center; justify-content: center; gap: 12px;
-    padding: 10px 16px;
-    background: linear-gradient(135deg, var(--accent), #4f46e5);
-    color: #fff; font-size: 0.82rem; font-weight: 700;
-    animation: banner-in 0.3s ease-out;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(8px);
+    animation: banner-fade 0.3s ease-out;
 }
-@keyframes banner-in {
-    from { transform: translateY(-100%); }
-    to   { transform: translateY(0); }
+.update-banner__box {
+    background: var(--card);
+    border: 1px solid var(--accent);
+    border-radius: 20px;
+    padding: 32px 28px;
+    text-align: center;
+    max-width: 320px;
+    width: 90%;
+    box-shadow: 0 0 40px rgba(99,102,241,0.3);
+    animation: banner-pop 0.35s ease-out;
 }
-.update-banner button {
-    padding: 5px 14px; border-radius: 6px;
-    background: #fff; color: var(--accent);
-    font-size: 0.75rem; font-weight: 800;
+.update-banner__icon { font-size: 2.5rem; margin-bottom: 12px; }
+.update-banner__title {
+    font-size: 1.05rem; font-weight: 800; color: var(--text);
+    margin-bottom: 6px;
+}
+.update-banner__sub {
+    font-size: 0.78rem; color: var(--text-3); line-height: 1.5;
+    margin-bottom: 20px;
+}
+.update-banner__btn {
+    width: 100%; padding: 13px;
+    background: var(--accent); color: #fff;
+    font-size: 0.9rem; font-weight: 800;
+    border-radius: var(--radius-sm);
     border: none; cursor: pointer;
+    transition: opacity 0.2s;
 }
-.update-banner button:active { opacity: 0.8; }
+.update-banner__btn:active { opacity: 0.8; }
+@keyframes banner-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes banner-pop {
+    from { transform: scale(0.9); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+}
 
 /* ═══════════════════════════════════════════════════════════════
    SCROLLBAR
