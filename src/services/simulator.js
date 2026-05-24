@@ -5,8 +5,8 @@ const AAVE_BORROW_APY = { ETH: 3.2, BTC: 1.5 };
 const LP_APY = { 'ETH-USDC': 25, 'BTC-USDC': 18 };
 const AAVE_LTV_USDC = 0.80;
 
-const COOLDOWN_DAYS = 3;
-const MIN_HOLD_DAYS = 5;
+const COOLDOWN_DAYS = 5;
+const MIN_HOLD_DAYS = 7;
 const LONG_LEV = 3;
 const SHORT_LEV = 3;
 
@@ -38,9 +38,12 @@ function emptyPos() {
 
 function isMajorChange(from, to) {
     if (!from) return true;
-    const bullSide = ['bull', 'accumulation'];
-    const bearSide = ['bear', 'distribution'];
-    return bullSide.includes(from) !== bullSide.includes(to);
+    // Only truly opposite transitions are MAJOR (close everything)
+    // bull↔bear = MAJOR
+    // Everything else = MINOR (keep LP, adjust hedge only)
+    if (from === 'bull' && to === 'bear') return true;
+    if (from === 'bear' && to === 'bull') return true;
+    return false;
 }
 
 function closeAll(pos, price, date, log) {
@@ -128,7 +131,7 @@ function openStrategy(phase, cash, price, asset, pos, date, log) {
         pos.aave_supply = cash;
         const borrow = Math.floor(cash * 0.35);
         pos.aave_borrow = borrow;
-        const sm = Math.floor(cash * 0.10);
+        const sm = Math.floor(cash * 0.05);
         pos.short_margin = sm; pos.short_lev = SHORT_LEV;
         pos.short_size = sm * SHORT_LEV; pos.short_entry = price;
         allocated = cash;

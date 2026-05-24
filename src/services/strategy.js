@@ -391,7 +391,7 @@ function buildDistributionStrategy(amount, rates, phases, prices) {
         entry_price: price, take_profit: price * 0.85,
     });
 
-    const shortMargin = Math.floor(amount * 0.15);
+    const shortMargin = Math.floor(amount * 0.05);
     const shortLev = 3;
     const sl = calcStopLoss(price, shortLev, 'SHORT');
     const tp = calcTakeProfit(price, shortLev, 'SHORT');
