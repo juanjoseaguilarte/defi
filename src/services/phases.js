@@ -236,32 +236,60 @@ function detectPhase(candles, currentPrice) {
         }
     }
 
-    // ── Strong price signal: price far from SMA20 (catches cases where SMA40 lags) ──
+    // ── Strong price signal: price far from SMA20 ──
+    // This catches cases where SMA20/SMA40 slope hasn't turned yet
+    // (e.g. BTC drops from 108k to 76k but monthly SMA20 still rising from 20 months of uptrend)
     const priceSmaDistance = ((currentPrice - lastSma20) / lastSma20) * 100;
 
-    if (priceSmaDistance < -8 && slope20 < 0) {
-        const reasons = [`Precio ${priceSmaDistance.toFixed(1)}% por debajo de SMA20`, 'SMA20 con pendiente negativa'];
-        if (color === 'red') reasons.push('SMA20 roja');
-        if (decliningMR(allMR)) reasons.push('MR decrecientes');
+    // >15% below SMA20 = E4 regardless of slope (the drop is undeniable)
+    if (priceSmaDistance < -15) {
         return {
             type: 'bear',
             phase: 'Etapa 4 — Declive',
-            reason: reasons.join('. '),
+            reason: `Precio ${priceSmaDistance.toFixed(1)}% por debajo de SMA20. Caída severa sin importar la pendiente de las medias`,
         };
     }
-
-    if (priceSmaDistance > 8 && slope20 > 0) {
-        const reasons = [`Precio +${priceSmaDistance.toFixed(1)}% por encima de SMA20`, 'SMA20 con pendiente positiva'];
-        if (color === 'green') reasons.push('SMA20 verde');
-        if (risingmR(allmR)) reasons.push('mR crecientes');
+    if (priceSmaDistance > 15) {
         return {
             type: 'bull',
             phase: 'Etapa 2 — Avance',
-            reason: reasons.join('. '),
+            reason: `Precio +${priceSmaDistance.toFixed(1)}% por encima de SMA20. Subida fuerte sin importar la pendiente de las medias`,
         };
     }
 
-    // ── Price below SMA20 with clear negative slope (even without full train tracks) ──
+    // 5-15% below: check slope direction for E4 vs E3
+    if (priceSmaDistance < -5) {
+        if (slope20 < 0) {
+            return {
+                type: 'bear',
+                phase: 'Etapa 4 — Declive',
+                reason: `Precio ${priceSmaDistance.toFixed(1)}% por debajo de SMA20. SMA20 con pendiente negativa (${slope20.toFixed(2)}%)`,
+            };
+        }
+        // Price dropped but SMA20 still rising → distribution turning into decline
+        return {
+            type: 'distribution',
+            phase: 'Etapa 3 — Distribución (cayendo)',
+            reason: `Precio ${priceSmaDistance.toFixed(1)}% por debajo de SMA20 pero SMA20 aún con pendiente positiva. Transición de E3 a E4 inminente`,
+        };
+    }
+
+    if (priceSmaDistance > 5) {
+        if (slope20 > 0) {
+            return {
+                type: 'bull',
+                phase: 'Etapa 2 — Avance',
+                reason: `Precio +${priceSmaDistance.toFixed(1)}% por encima de SMA20. SMA20 con pendiente positiva (+${slope20.toFixed(2)}%)`,
+            };
+        }
+        return {
+            type: 'accumulation',
+            phase: 'Etapa 1 — Acumulación (rebotando)',
+            reason: `Precio +${priceSmaDistance.toFixed(1)}% por encima de SMA20 pero SMA20 aún bajando. Posible inicio de E1`,
+        };
+    }
+
+    // ── Price below SMA20 with clear negative slope ──
     if (!aboveSma20 && slope20 < -0.5 && color === 'red') {
         const reasons = ['Precio por debajo de SMA20 roja', `Pendiente SMA20: ${slope20.toFixed(2)}%`];
         if (slope40 < 0) {
