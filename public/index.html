@@ -156,126 +156,49 @@
             </div>
         </div>
 
-        <!-- AAVE -->
-        <div id="page-aave" class="page-view" style="display:none">
+        <!-- ESTRATEGIA -->
+        <div id="page-strategy" class="page-view" style="display:none">
             <div class="section-header">
-                <h2 class="section-title">Aave Tracker</h2>
-                <button class="refresh-btn" id="aaveRefresh" onclick="loadAavePosition()">&#x21bb;</button>
+                <h2 class="section-title">Estrategia Delta-Neutral</h2>
+                <button class="refresh-btn" id="strategyRefresh" onclick="loadStrategy()">&#x21bb;</button>
             </div>
 
-            <!-- No position form -->
-            <div id="aaveNoPosition" style="display:none">
-                <div class="aave-empty">
-                    <div class="aave-empty__icon">&#x1F3E6;</div>
-                    <div class="aave-empty__text">No tienes una posición registrada</div>
-                    <div class="aave-empty__sub">Introduce los datos de tu posición en Aave para monitorizar tu Health Factor</div>
+            <div class="strategy-input-wrap">
+                <label class="strategy-input__label">Capital a invertir (USD)</label>
+                <div class="strategy-input__row">
+                    <input type="number" class="aave-form__input" id="strategyAmount" placeholder="10000" step="100" min="100" value="10000">
+                    <button class="btn-primary" style="width:auto;padding:13px 24px;flex-shrink:0" onclick="loadStrategy()">Analizar</button>
                 </div>
-                <div class="aave-form-wrap">
-                    <div class="aave-form__group">
-                        <label class="aave-form__label">Colateral</label>
-                        <div class="aave-form__row">
-                            <input type="number" class="aave-form__input" id="aaveCollQty" placeholder="Cantidad" step="any" min="0">
-                            <select class="aave-form__select" id="aaveCollCoin">
-                                <option value="BTC">BTC</option>
-                                <option value="ETH">ETH</option>
-                                <option value="SOL">SOL</option>
-                                <option value="USDC">USDC</option>
-                            </select>
-                        </div>
+                <div class="strategy-chain">Arbitrum &mdash; Pools, Aave, Perps, Revert</div>
+            </div>
+
+            <div class="strategy-sources" id="strategySources" style="display:none"></div>
+
+            <!-- Portfolio summary -->
+            <div id="strategyPortfolio" style="display:none">
+                <div class="strategy-portfolio-card">
+                    <div class="strategy-portfolio__header">
+                        <span>Portfolio Recomendado</span>
+                        <span class="strategy-portfolio__apy" id="portfolioApy">&mdash;</span>
                     </div>
-                    <div class="aave-form__group">
-                        <label class="aave-form__label">Deuda</label>
-                        <div class="aave-form__row">
-                            <input type="number" class="aave-form__input" id="aaveDebtQty" placeholder="Cantidad" step="any" min="0">
-                            <select class="aave-form__select" id="aaveDebtCoin">
-                                <option value="USDC">USDC</option>
-                                <option value="ETH">ETH</option>
-                                <option value="BTC">BTC</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="aave-form__group">
-                        <label class="aave-form__label">Alerta Health Factor</label>
-                        <input type="number" class="aave-form__input" id="aaveHfThreshold" placeholder="1.80" step="0.01" min="1" max="10" value="1.80">
-                    </div>
-                    <div class="aave-form__group">
-                        <label class="aave-form__label">Notas (opcional)</label>
-                        <input type="text" class="aave-form__input" id="aaveNotes" placeholder="Ej: Aave v3 Arbitrum">
-                    </div>
-                    <button class="btn-primary" onclick="saveAavePosition()">Guardar Posición</button>
+                    <div id="portfolioAllocations"></div>
                 </div>
             </div>
 
-            <!-- Has position -->
-            <div id="aaveHasPosition" style="display:none">
-                <div class="aave-hf-hero">
-                    <div class="aave-hf-hero__label">Health Factor</div>
-                    <div class="aave-hf-hero__display">
-                        <span class="aave-hf-hero__current" id="aaveHfCurrent">&mdash;</span>
-                        <span class="aave-hf-hero__sep">/</span>
-                        <span class="aave-hf-hero__threshold" id="aaveHfThresholdDisplay">1.80</span>
-                    </div>
-                    <div class="aave-hf-hero__bar">
-                        <div class="aave-hf-hero__bar-fill" id="aaveHfBar"></div>
-                        <div class="aave-hf-hero__bar-marker" id="aaveHfMarker"></div>
-                    </div>
-                    <div class="aave-hf-hero__status" id="aaveHfStatus">Monitorizando...</div>
+            <!-- All strategies list -->
+            <div class="strategy-list" id="strategyList">
+                <div class="strategy-empty">
+                    <div class="strategy-empty__icon">&#x1F9E0;</div>
+                    <div class="strategy-empty__text">Introduce un monto para analizar</div>
+                    <div class="strategy-empty__sub">El motor analiza pools de liquidez, lending, perpetuales y posiciones apalancadas en Arbitrum para encontrar las mejores combinaciones delta-neutral.</div>
                 </div>
+            </div>
 
-                <div class="aave-section">
-                    <div class="aave-section__title">Colateral</div>
-                    <div class="aave-card">
-                        <div id="aavePosCollList">&mdash;</div>
-                        <div class="aave-card__total">
-                            <span>Total colateral</span>
-                            <span id="aavePosCollUsd">&mdash;</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="aave-section">
-                    <div class="aave-section__title">Deuda</div>
-                    <div class="aave-card">
-                        <div id="aavePosDebtList">&mdash;</div>
-                        <div class="aave-card__total">
-                            <span>Total deuda</span>
-                            <span id="aavePosDebtUsd">&mdash;</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="aave-section">
-                    <div class="aave-section__title">Alerta de Liquidación</div>
-                    <div class="aave-card">
-                        <div class="aave-alert-row">
-                            <span>Avisar si HF baja de:</span>
-                            <div class="aave-alert-row__input">
-                                <input type="number" class="aave-form__input" id="aaveHfThresholdEdit" step="0.01" min="1" max="10" value="1.80">
-                                <button class="btn-sm" id="aaveHfSaveBtn" onclick="saveHfThreshold()">Guardar</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="aave-section">
-                    <div class="aave-card" style="display:flex;gap:8px">
-                        <button class="btn-secondary" onclick="editAavePosition()" style="flex:1">Editar</button>
-                        <button class="btn-danger" onclick="showCloseConfirm()" style="flex:1">Cerrar Posición</button>
-                    </div>
-                    <div id="aaveCloseConfirm" style="display:none" class="aave-confirm">
-                        <p>¿Confirmas cerrar la posición?</p>
-                        <div style="display:flex;gap:8px">
-                            <button class="btn-danger" onclick="confirmClosePosition()" style="flex:1">Sí, cerrar</button>
-                            <button class="btn-secondary" onclick="cancelCloseConfirm()" style="flex:1">Cancelar</button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="aave-section">
-                    <div class="aave-section__title">Historial</div>
-                    <div id="aaveActionsList">
-                        <div class="aave-empty__sub">Cargando...</div>
-                    </div>
+            <!-- Strategy detail modal -->
+            <div class="signal-detail" id="strategyDetail" style="display:none">
+                <div class="signal-detail__inner">
+                    <button class="detail-panel__close" onclick="closeStrategyDetail()">&times;</button>
+                    <div id="strategyDetailContent"></div>
                 </div>
             </div>
         </div>
@@ -325,9 +248,9 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
                 Señales
             </button>
-            <button class="nav-item" data-page="aave">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M6 12h12"/></svg>
-                Aave
+            <button class="nav-item" data-page="strategy">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                Estrategia
             </button>
             <button class="nav-item" data-page="settings">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>

@@ -36,7 +36,7 @@ navItems.forEach(btn => {
             pageLoaded[page] = true;
             if (page === 'analyst') loadAnalyst();
             if (page === 'signals') loadSignals();
-            if (page === 'aave') loadAavePosition();
+            if (page === 'strategy') {} // user triggers via input
         }
     });
 });
@@ -862,234 +862,155 @@ async function loadSignals() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// AAVE
+// STRATEGY — Delta-Neutral on Arbitrum
 // ═══════════════════════════════════════════════════════════════
 
-let aavePositionData = null;
-
-function getDeviceToken() {
-    let token = localStorage.getItem('defi_device_token');
-    if (!token) {
-        token = 'dev_' + Math.random().toString(36).slice(2, 10);
-        localStorage.setItem('defi_device_token', token);
-    }
-    return token;
-}
+let strategyData = null;
 
 function fmtUsd(v) {
     if (v == null) return '—';
     return Number(v).toLocaleString('es-ES', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
 }
 
-function fmtQty(v, coin) {
-    const dec = ['BTC'].includes(coin) ? 6 : (['ETH', 'SOL'].includes(coin) ? 4 : 2);
-    return Number(v).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: dec });
-}
-
 async function loadAavePosition() {
     const dt = getDeviceToken();
     const btn = document.getElementById('aaveRefresh');
-    btn?.classList.add('spinning');
+const RISK_COLORS = {
+    bajo:        { bg: 'rgba(34,197,94,0.15)',  color: '#22c55e' },
+    medio:       { bg: 'rgba(234,179,8,0.15)',  color: '#eab308' },
+    'medio-alto':{ bg: 'rgba(249,115,22,0.15)', color: '#f97316' },
+    alto:        { bg: 'rgba(239,68,68,0.15)',  color: '#ef4444' },
+};
+
+const STRATEGY_ICONS = {
+    lp_stable: '\u{1F4B5}', aave_supply: '\u{1F3E6}', aave_loop: '\u{1F504}',
+    funding_arb: '\u{1F4B0}', hedged_lp: '\u{1F6E1}', managed_lp: '\u{2699}',
+};
+
+async function loadStrategy() {
+    const amount = parseFloat(document.getElementById('strategyAmount').value) || 10000;
+    const btn = document.getElementById('strategyRefresh');
+    const list = document.getElementById('strategyList');
+    btn.classList.add('spinning');
+    list.innerHTML = '<div class="strategy-empty"><div class="spinner spinner--sm"></div><div>Analizando pools, lending y perps en Arbitrum...</div></div>';
 
     try {
-        const resp = await fetch(`${APP_BASE}/api/aave?action=position&device_token=${encodeURIComponent(dt)}`);
+        const resp = await fetch(`${APP_BASE}/api/strategy?amount=${amount}`);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
-        if (!data.ok) throw new Error(data.error);
-
-        if (!data.position) {
-            document.getElementById('aaveNoPosition').style.display = 'block';
-            document.getElementById('aaveHasPosition').style.display = 'none';
-            return;
-        }
-
-        aavePositionData = data;
-        document.getElementById('aaveNoPosition').style.display = 'none';
-        document.getElementById('aaveHasPosition').style.display = 'block';
-
-        const pos = data.position;
-        const live = data.live;
-        const threshold = parseFloat(pos.hf_alert_threshold) || 1.80;
-
-        const hfEl = document.getElementById('aaveHfCurrent');
-        const hfBar = document.getElementById('aaveHfBar');
-        const hfMarker = document.getElementById('aaveHfMarker');
-        const hfStatus = document.getElementById('aaveHfStatus');
-
-        document.getElementById('aaveHfThresholdDisplay').textContent = threshold.toFixed(2);
-        document.getElementById('aaveHfThresholdEdit').value = threshold.toFixed(2);
-
-        if (live.health_factor !== null) {
-            const hf = live.health_factor;
-            hfEl.textContent = hf.toFixed(2);
-
-            if (hf > 2.5) {
-                hfEl.className = 'aave-hf-hero__current aave-hf--safe';
-                hfStatus.textContent = 'Posición segura';
-                hfStatus.className = 'aave-hf-hero__status aave-hf--safe';
-            } else if (hf > threshold) {
-                hfEl.className = 'aave-hf-hero__current aave-hf--warning';
-                hfStatus.textContent = 'Precaución — acercándose al umbral';
-                hfStatus.className = 'aave-hf-hero__status aave-hf--warning';
-            } else {
-                hfEl.className = 'aave-hf-hero__current aave-hf--danger';
-                hfStatus.textContent = 'PELIGRO — por debajo del umbral';
-                hfStatus.className = 'aave-hf-hero__status aave-hf--danger';
-            }
-
-            const pct = Math.min(100, Math.max(0, ((hf - 1) / 4) * 100));
-            hfBar.style.width = pct + '%';
-            hfBar.style.background = hf > 2.5 ? 'var(--bull)' : (hf > threshold ? 'var(--dist)' : 'var(--bear)');
-
-            const threshPct = Math.min(100, Math.max(0, ((threshold - 1) / 4) * 100));
-            hfMarker.style.left = threshPct + '%';
-        } else {
-            hfEl.textContent = '—';
-        }
-
-        // Collateral
-        const collAssets = data.collateral_assets || [];
-        document.getElementById('aavePosCollList').innerHTML = collAssets.length
-            ? collAssets.map(a => `<div class="aave-pos-row"><span class="aave-pos-label">${fmtQty(a.qty, a.coin)} ${a.coin}</span><span class="aave-pos-value">${fmtUsd(a.value_usd)}</span></div>`).join('')
-            : '<div class="aave-pos-row"><span class="aave-pos-label">—</span></div>';
-        document.getElementById('aavePosCollUsd').textContent = fmtUsd(live.collateral_usd);
-
-        // Debt
-        const debtAssets = data.debt_assets || [];
-        document.getElementById('aavePosDebtList').innerHTML = debtAssets.length
-            ? debtAssets.map(a => `<div class="aave-pos-row"><span class="aave-pos-label">${fmtQty(a.qty, a.coin)} ${a.coin}</span><span class="aave-pos-value">${fmtUsd(a.value_usd)}</span></div>`).join('')
-            : '<div class="aave-pos-row"><span class="aave-pos-label">—</span></div>';
-        document.getElementById('aavePosDebtUsd').textContent = fmtUsd(live.debt_usd);
-
-        loadAaveActions();
+        if (data.error) throw new Error(data.error);
+        strategyData = data;
+        renderStrategy(data);
     } catch (e) {
-        console.error('Aave load error:', e);
+        list.innerHTML = `<div class="strategy-empty"><div style="color:var(--bear)">Error: ${e.message}</div></div>`;
     } finally {
-        btn?.classList.remove('spinning');
+        btn.classList.remove('spinning');
     }
 }
 
-async function saveAavePosition() {
-    const dt = getDeviceToken();
-    const body = {
-        action: 'save_position',
-        device_token: dt,
-        collateral_coin: document.getElementById('aaveCollCoin').value,
-        collateral_qty: parseFloat(document.getElementById('aaveCollQty').value) || 0,
-        debt_coin: document.getElementById('aaveDebtCoin').value,
-        debt_qty: parseFloat(document.getElementById('aaveDebtQty').value) || 0,
-        hf_alert_threshold: parseFloat(document.getElementById('aaveHfThreshold').value) || 1.80,
-        notes: document.getElementById('aaveNotes').value,
-    };
+function renderStrategy(data) {
+    const src = data.data_sources || {};
+    const srcEl = document.getElementById('strategySources');
+    srcEl.style.display = '';
+    srcEl.innerHTML = `<span>Fuentes: ${src.defillama_pools || 0} pools</span><span>${src.hyperliquid_coins || 0} perps</span><span>${src.gmx_markets || 0} GMX</span>`;
 
-    try {
-        const resp = await fetch(`${APP_BASE}/api/aave`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
-        const data = await resp.json();
-        if (!data.ok) throw new Error(data.error);
-        loadAavePosition();
-    } catch (e) {
-        alert('Error: ' + e.message);
+    // Portfolio summary
+    const portfolio = data.portfolio;
+    if (portfolio && portfolio.allocations.length > 0) {
+        document.getElementById('strategyPortfolio').style.display = '';
+        document.getElementById('portfolioApy').textContent = portfolio.totalApy.toFixed(1) + '% APY';
+        document.getElementById('portfolioAllocations').innerHTML = portfolio.allocations.map(a => {
+            const rc = RISK_COLORS[a.riskLevel] || RISK_COLORS.medio;
+            return `<div class="portfolio-alloc">
+                <span class="portfolio-alloc__name">${a.name}</span>
+                <span class="portfolio-alloc__weight">${a.weight}</span>
+                <span class="portfolio-alloc__amount">${fmtUsd(a.allocation)}</span>
+                <span class="portfolio-alloc__apy" style="color:var(--bull)">${a.apy.toFixed(1)}%</span>
+            </div>`;
+        }).join('');
     }
-}
 
-function editAavePosition() {
-    if (!aavePositionData?.position) return;
-    const pos = aavePositionData.position;
-    document.getElementById('aaveCollCoin').value = pos.collateral_coin;
-    document.getElementById('aaveCollQty').value = pos.collateral_qty;
-    document.getElementById('aaveDebtCoin').value = pos.debt_coin;
-    document.getElementById('aaveDebtQty').value = pos.debt_qty;
-    document.getElementById('aaveHfThreshold').value = pos.hf_alert_threshold || '1.80';
-    document.getElementById('aaveNotes').value = pos.notes || '';
-    document.getElementById('aaveNoPosition').style.display = 'block';
-    document.getElementById('aaveHasPosition').style.display = 'none';
-}
-
-function showCloseConfirm() {
-    document.getElementById('aaveCloseConfirm').style.display = 'block';
-}
-function cancelCloseConfirm() {
-    document.getElementById('aaveCloseConfirm').style.display = 'none';
-}
-
-async function confirmClosePosition() {
-    cancelCloseConfirm();
-    const dt = getDeviceToken();
-    try {
-        const resp = await fetch(`${APP_BASE}/api/aave`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'close_position', device_token: dt }),
-        });
-        const data = await resp.json();
-        if (!data.ok) throw new Error(data.error);
-    } catch (e) {
-        console.error('Close position error:', e);
-    }
-    loadAavePosition();
-}
-
-async function saveHfThreshold() {
-    const dt = getDeviceToken();
-    const threshold = parseFloat(document.getElementById('aaveHfThresholdEdit').value);
-    if (!threshold || threshold < 1 || threshold > 10) {
-        alert('Introduce un valor entre 1.00 y 10.00');
+    // All strategies
+    const list = document.getElementById('strategyList');
+    if (!data.all_strategies?.length) {
+        list.innerHTML = '<div class="strategy-empty"><div>No se encontraron estrategias delta-neutral viables</div><div class="strategy-empty__sub">Intenta con un monto diferente o espera a que cambien las condiciones del mercado</div></div>';
         return;
     }
 
-    try {
-        const resp = await fetch(`${APP_BASE}/api/aave`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'update_hf_threshold', device_token: dt, hf_alert_threshold: threshold }),
-        });
-        const data = await resp.json();
-        if (!data.ok) throw new Error(data.error);
-
-        document.getElementById('aaveHfThresholdDisplay').textContent = threshold.toFixed(2);
-        const btn = document.getElementById('aaveHfSaveBtn');
-        btn.textContent = 'Guardado';
-        btn.style.background = 'rgba(34,197,94,0.2)';
-        btn.style.color = 'var(--bull)';
-        setTimeout(() => { btn.textContent = 'Guardar'; btn.style.background = ''; btn.style.color = ''; }, 2000);
-        loadAavePosition();
-    } catch (e) {
-        alert('Error: ' + e.message);
-    }
+    list.innerHTML = data.all_strategies.map((s, idx) => {
+        const rc = RISK_COLORS[s.riskLevel] || RISK_COLORS.medio;
+        const icon = STRATEGY_ICONS[s.type] || '\u{1F4CA}';
+        return `<div class="strategy-card" onclick="showStrategyDetail(${idx})" style="border-left:4px solid ${rc.color}">
+            <div class="strategy-card__top">
+                <div class="strategy-card__name">${icon} ${s.name}</div>
+                <div class="strategy-card__risk" style="background:${rc.bg};color:${rc.color}">${s.riskLevel.toUpperCase()}</div>
+            </div>
+            <div class="strategy-card__apy">
+                <span class="strategy-card__apy-num">${s.apy.toFixed(1)}%</span>
+                <span class="strategy-card__apy-label">APY estimado</span>
+            </div>
+            <div class="strategy-card__bottom">
+                <span>${s.protocol}</span>
+                <span>${s.deltaNeutral ? 'Delta Neutral' : 'Direccional'}</span>
+            </div>
+            ${s.description ? `<div class="strategy-card__desc">${s.description.slice(0, 120)}...</div>` : ''}
+        </div>`;
+    }).join('');
 }
 
-async function loadAaveActions() {
-    const dt = getDeviceToken();
-    const el = document.getElementById('aaveActionsList');
-    try {
-        const resp = await fetch(`${APP_BASE}/api/aave?action=actions&device_token=${encodeURIComponent(dt)}`);
-        const data = await resp.json();
+function showStrategyDetail(idx) {
+    if (!strategyData?.all_strategies?.[idx]) return;
+    const s = strategyData.all_strategies[idx];
+    const rc = RISK_COLORS[s.riskLevel] || RISK_COLORS.medio;
+    const icon = STRATEGY_ICONS[s.type] || '\u{1F4CA}';
 
-        if (!data.actions || !data.actions.length) {
-            el.innerHTML = '<div class="aave-timeline__empty">Sin acciones registradas</div>';
-            return;
-        }
+    let html = `
+        <div style="font-size:1.2rem;font-weight:800;margin-bottom:4px">${icon} ${s.name}</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+            <span class="strategy-card__risk" style="background:${rc.bg};color:${rc.color};font-size:0.7rem;padding:3px 10px;border-radius:6px">${s.riskLevel.toUpperCase()}</span>
+            <span style="font-size:0.75rem;color:var(--text-3)">${s.protocol}</span>
+            ${s.deltaNeutral ? '<span style="font-size:0.75rem;color:var(--bull)">Delta Neutral</span>' : ''}
+        </div>
+        <div style="font-size:2rem;font-weight:900;color:var(--bull);margin-bottom:4px">${s.apy.toFixed(1)}% <span style="font-size:0.9rem;font-weight:600;color:var(--text-3)">APY est.</span></div>
+        ${s.tvl ? `<div style="font-size:0.75rem;color:var(--text-3);margin-bottom:16px">TVL: ${fmtUsd(s.tvl)}</div>` : ''}
+        <div style="font-size:0.82rem;color:var(--text-2);line-height:1.6;margin-bottom:16px">${s.description}</div>
+    `;
 
-        el.innerHTML = '<ul class="aave-timeline">' + data.actions.map(a => `
-            <li class="aave-timeline__item">
-                <div class="aave-timeline__dot"></div>
-                <div>
-                    <div class="aave-timeline__text">
-                        <strong>${a.action_type}</strong>
-                        ${a.from_asset ? `${a.from_asset} → ${a.to_asset}` : ''}
-                        ${a.qty ? `(${a.qty})` : ''}
-                    </div>
-                    <div class="aave-timeline__time">${a.executed_at || a.created_at}</div>
-                </div>
-            </li>
-        `).join('') + '</ul>';
-    } catch (e) {
-        el.innerHTML = '<div class="aave-timeline__empty">Error al cargar</div>';
+    if (s.steps?.length) {
+        html += '<div style="font-size:0.72rem;font-weight:700;color:var(--accent2);text-transform:uppercase;margin-bottom:8px">Pasos para ejecutar</div>';
+        html += s.steps.map((step, i) => `<div style="display:flex;gap:10px;margin-bottom:8px;font-size:0.8rem">
+            <span style="flex-shrink:0;width:22px;height:22px;border-radius:50%;background:var(--card2);color:var(--accent2);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.7rem">${i + 1}</span>
+            <span style="color:var(--text-2);line-height:1.5">${step}</span>
+        </div>`).join('');
     }
+
+    if (s.risks?.length) {
+        html += '<div style="font-size:0.72rem;font-weight:700;color:var(--bear);text-transform:uppercase;margin:16px 0 8px">Riesgos</div>';
+        html += s.risks.map(r => `<div style="font-size:0.78rem;color:var(--text-3);margin-bottom:4px">• ${r}</div>`).join('');
+    }
+
+    html += '<div style="font-size:0.65rem;color:var(--text-3);margin-top:16px;font-style:italic">APYs estimados basados en datos actuales. Pueden variar.</div>';
+
+    document.getElementById('strategyDetailContent').innerHTML = html;
+    const panel = document.getElementById('strategyDetail');
+    panel.style.display = 'flex';
+    panel.getBoundingClientRect();
+    panel.classList.add('signal-detail--open');
 }
+
+function closeStrategyDetail() {
+    const panel = document.getElementById('strategyDetail');
+    panel.classList.remove('signal-detail--open');
+    setTimeout(() => { panel.style.display = 'none'; }, 250);
+}
+
+document.getElementById('strategyDetail').addEventListener('click', function(e) {
+    if (e.target === this) closeStrategyDetail();
+});
+
+document.getElementById('strategyAmount').addEventListener('keydown', e => {
+    if (e.key === 'Enter') loadStrategy();
+});
 
 // ═══════════════════════════════════════════════════════════════
 // AUTO-UPDATE — Check for new version every 60s

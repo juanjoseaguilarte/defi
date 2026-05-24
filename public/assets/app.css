@@ -742,6 +742,90 @@ input, select { font-family: var(--font); }
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   STRATEGY
+   ═══════════════════════════════════════════════════════════════ */
+.strategy-input-wrap {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px 16px; margin-bottom: 14px;
+}
+.strategy-input__label {
+    display: block; font-size: 0.75rem; font-weight: 700;
+    color: var(--text-2); margin-bottom: 8px;
+}
+.strategy-input__row { display: flex; gap: 8px; }
+.strategy-chain {
+    font-size: 0.68rem; color: var(--text-3); margin-top: 8px;
+    font-weight: 600; letter-spacing: 0.03em;
+}
+.strategy-sources {
+    display: flex; gap: 12px; flex-wrap: wrap;
+    font-size: 0.65rem; color: var(--text-3); font-weight: 600;
+    margin-bottom: 12px; padding: 0 4px;
+}
+.strategy-empty {
+    text-align: center; padding: 40px 16px; color: var(--text-3);
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.strategy-empty__icon { font-size: 2.5rem; }
+.strategy-empty__text { font-size: 0.95rem; font-weight: 700; color: var(--text-2); }
+.strategy-empty__sub { font-size: 0.78rem; line-height: 1.5; max-width: 300px; }
+
+.strategy-portfolio-card {
+    background: var(--card); border: 1px solid var(--accent);
+    border-radius: var(--radius); padding: 16px; margin-bottom: 14px;
+    box-shadow: 0 0 20px rgba(99,102,241,0.1);
+}
+.strategy-portfolio__header {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.82rem; font-weight: 800; margin-bottom: 12px;
+}
+.strategy-portfolio__apy {
+    font-size: 1rem; font-weight: 900; color: var(--bull);
+}
+.portfolio-alloc {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 0; border-bottom: 1px solid var(--border2);
+    font-size: 0.78rem;
+}
+.portfolio-alloc:last-child { border-bottom: none; }
+.portfolio-alloc__name { flex: 1; font-weight: 600; color: var(--text-2); }
+.portfolio-alloc__weight {
+    font-size: 0.68rem; font-weight: 800; color: var(--accent2);
+    min-width: 32px; text-align: center;
+}
+.portfolio-alloc__amount { font-weight: 700; min-width: 70px; text-align: right; }
+.portfolio-alloc__apy { font-weight: 800; min-width: 50px; text-align: right; }
+
+.strategy-list { display: flex; flex-direction: column; gap: 10px; }
+.strategy-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px;
+    cursor: pointer; transition: transform 0.1s;
+}
+.strategy-card:active { transform: scale(0.98); }
+.strategy-card__top {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px;
+}
+.strategy-card__name { font-size: 0.85rem; font-weight: 700; }
+.strategy-card__risk {
+    font-size: 0.6rem; font-weight: 800; padding: 3px 8px;
+    border-radius: 6px; letter-spacing: 0.04em;
+}
+.strategy-card__apy {
+    display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px;
+}
+.strategy-card__apy-num { font-size: 1.4rem; font-weight: 900; color: var(--bull); }
+.strategy-card__apy-label { font-size: 0.68rem; color: var(--text-3); font-weight: 600; }
+.strategy-card__bottom {
+    display: flex; justify-content: space-between;
+    font-size: 0.72rem; color: var(--text-3); font-weight: 600;
+}
+.strategy-card__desc {
+    font-size: 0.7rem; color: var(--text-3); margin-top: 6px; line-height: 1.4;
+}
+
+/* ═══════════════════════════════════════════════════════════════
    UPDATE BANNER
    ═══════════════════════════════════════════════════════════════ */
 .update-banner {

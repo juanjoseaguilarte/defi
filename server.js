@@ -24,6 +24,7 @@ app.use('/api/analyst', require('./src/routes/analyst'));
 app.use('/api/candles_detail', require('./src/routes/candles'));
 app.use('/api/signals', require('./src/routes/signals'));
 app.use('/api/aave', require('./src/routes/aave'));
+app.use('/api/strategy', require('./src/routes/strategy'));
 app.use('/api/admin', require('./src/routes/admin'));
 app.use('/api/sync', require('./src/routes/sync'));
 
