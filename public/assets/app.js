@@ -36,7 +36,7 @@ navItems.forEach(btn => {
             pageLoaded[page] = true;
             if (page === 'analyst') loadAnalyst();
             if (page === 'signals') loadSignals();
-            if (page === 'strategy') {} // user triggers via input
+            if (page === 'strategy') initTracker();
         }
     });
 });
@@ -866,6 +866,14 @@ async function loadSignals() {
 // ═══════════════════════════════════════════════════════════════
 
 let strategyData = null;
+let activeTracker = null;
+let trackerCheckInterval = null;
+
+function getDeviceToken() {
+    let t = localStorage.getItem('defi_device_token');
+    if (!t) { t = 'dev_' + Math.random().toString(36).slice(2, 10); localStorage.setItem('defi_device_token', t); }
+    return t;
+}
 
 function fmtUsd(v) {
     if (v == null) return '—';
@@ -948,7 +956,16 @@ function renderStrategy(data) {
         return;
     }
 
+    // Load existing tracker data if any
+    const tracked = activeTracker?.steps || [];
+    const trackedMap = {};
+    for (const t of tracked) trackedMap[t.step_num] = t;
+
     let html = '';
+
+    // Alert banner
+    html += '<div id="trackerAlerts"></div>';
+
     for (const s of data.steps) {
         const apyColor = s.apy >= 0 ? 'var(--bull)' : 'var(--bear)';
         const apySign = s.apy >= 0 ? '+' : '';
@@ -956,8 +973,18 @@ function renderStrategy(data) {
             ? `<span class="strategy-step__dir strategy-step__dir--${s.direction === 'LONG' ? 'long' : 'short'}">${s.direction}</span>`
             : '';
 
-        html += `<div class="strategy-step-card">
-            <div class="strategy-step__num">${s.step}</div>
+        const t = trackedMap[s.step] || {};
+        const isDone = t.done === 1;
+        const needsPrice = s.direction || s.action?.includes('Borrow') || s.action?.includes('Pool');
+        const needsRange = s.action?.includes('Pool');
+
+        html += `<div class="strategy-step-card ${isDone ? 'strategy-step--done' : ''}" id="step-card-${s.step}">
+            <div class="strategy-step__check">
+                <label class="step-check">
+                    <input type="checkbox" ${isDone ? 'checked' : ''} onchange="toggleStep(${s.step}, this.checked)">
+                    <span class="step-check__mark">${isDone ? '✓' : s.step}</span>
+                </label>
+            </div>
             <div class="strategy-step__body">
                 <div class="strategy-step__action">${s.action} ${dirBadge}</div>
                 <div class="strategy-step__detail">${s.detail}</div>
@@ -966,6 +993,23 @@ function renderStrategy(data) {
                     <span class="strategy-step__amount">${fmtUsd(s.amount)}</span>
                     <span style="color:${apyColor};font-weight:800">${apySign}${s.apy?.toFixed(1) || '0'}% APY</span>
                 </div>
+
+                ${needsPrice || needsRange ? `<div class="strategy-step__inputs" id="step-inputs-${s.step}" ${isDone ? '' : 'style="display:none"'}>
+                    ${needsPrice ? `<div class="step-input-row">
+                        <label>Precio entrada</label>
+                        <input type="number" step="any" placeholder="Ej: 2500" value="${t.entry_price || ''}" onchange="updateStepField(${s.step}, 'entry_price', this.value)">
+                    </div>` : ''}
+                    ${needsRange ? `<div class="step-input-row">
+                        <label>Rango LP bajo</label>
+                        <input type="number" step="any" placeholder="Ej: 2200" value="${t.lp_range_low || ''}" onchange="updateStepField(${s.step}, 'lp_range_low', this.value)">
+                    </div>
+                    <div class="step-input-row">
+                        <label>Rango LP alto</label>
+                        <input type="number" step="any" placeholder="Ej: 2800" value="${t.lp_range_high || ''}" onchange="updateStepField(${s.step}, 'lp_range_high', this.value)">
+                    </div>` : ''}
+                </div>` : ''}
+
+                ${isDone && t.executed_at ? `<div class="strategy-step__executed">✓ Ejecutado ${new Date(t.executed_at).toLocaleString('es-ES')}</div>` : ''}
             </div>
         </div>`;
     }
@@ -1002,6 +1046,119 @@ function renderStrategy(data) {
     </div>`;
 
     list.innerHTML = html;
+}
+
+// ── Tracker functions ──
+
+async function saveTrackerStrategy() {
+    if (!strategyData) return;
+    const dt = getDeviceToken();
+    try {
+        const resp = await fetch(`${APP_BASE}/api/tracker/save`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                device_token: dt,
+                amount: strategyData.amount,
+                market_phase: strategyData.marketPhase,
+                main_asset: strategyData.mainAsset,
+                strategy_json: strategyData,
+                steps: strategyData.steps.map(s => ({
+                    step_num: s.step, leverage: s.leverage, direction: s.direction, margin_amount: s.amount,
+                })),
+            }),
+        });
+        const data = await resp.json();
+        if (data.ok) activeTracker = { strategy: { id: data.strategy_id }, steps: [], alerts: [] };
+    } catch (_) {}
+}
+
+async function loadTracker() {
+    const dt = getDeviceToken();
+    try {
+        const resp = await fetch(`${APP_BASE}/api/tracker?device_token=${dt}`);
+        const data = await resp.json();
+        if (data.ok && data.strategy) {
+            activeTracker = data;
+        }
+    } catch (_) {}
+}
+
+async function toggleStep(stepNum, done) {
+    if (!activeTracker?.strategy?.id) {
+        await saveTrackerStrategy();
+    }
+    if (!activeTracker?.strategy?.id) return;
+
+    const card = document.getElementById('step-card-' + stepNum);
+    const inputs = document.getElementById('step-inputs-' + stepNum);
+    if (card) card.classList.toggle('strategy-step--done', done);
+    if (inputs) inputs.style.display = done ? '' : 'none';
+
+    try {
+        await fetch(`${APP_BASE}/api/tracker/step`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ strategy_id: activeTracker.strategy.id, step_num: stepNum, done }),
+        });
+    } catch (_) {}
+}
+
+async function updateStepField(stepNum, field, value) {
+    if (!activeTracker?.strategy?.id) return;
+    const body = { strategy_id: activeTracker.strategy.id, step_num: stepNum };
+    body[field] = parseFloat(value) || null;
+    try {
+        await fetch(`${APP_BASE}/api/tracker/step`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+    } catch (_) {}
+}
+
+async function checkTrackerAlerts() {
+    if (!activeTracker?.strategy?.id) return;
+    const dt = getDeviceToken();
+    let priceParam = '';
+    const mainAsset = strategyData?.mainAsset || 'ETH';
+    const pairKey = mainAsset + 'USDT';
+    if (latestPrices[pairKey]) priceParam = `&price=${latestPrices[pairKey]}`;
+
+    try {
+        const resp = await fetch(`${APP_BASE}/api/tracker/check?device_token=${dt}${priceParam}`);
+        const data = await resp.json();
+        if (!data.ok || !data.alerts?.length) {
+            document.getElementById('trackerAlerts').innerHTML = '';
+            return;
+        }
+
+        document.getElementById('trackerAlerts').innerHTML = data.alerts.map(a => {
+            const color = a.alert_type === 'lp_out_of_range' ? 'var(--bear)' : 'var(--dist)';
+            return `<div class="tracker-alert" style="border-left-color:${color}">
+                <div class="tracker-alert__msg">${a.message}</div>
+                <button class="tracker-alert__dismiss" onclick="dismissAlert(${a.id})">OK</button>
+            </div>`;
+        }).join('');
+    } catch (_) {}
+}
+
+async function dismissAlert(id) {
+    try {
+        await fetch(`${APP_BASE}/api/tracker/dismiss`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ alert_id: id }),
+        });
+        checkTrackerAlerts();
+    } catch (_) {}
+}
+
+// Load tracker on strategy page load and start alert checking
+async function initTracker() {
+    await loadTracker();
+    if (activeTracker?.strategy) {
+        strategyData = activeTracker.strategy.strategy_json;
+        if (strategyData?.steps) renderStrategy(strategyData);
+    }
+    if (trackerCheckInterval) clearInterval(trackerCheckInterval);
+    trackerCheckInterval = setInterval(checkTrackerAlerts, 30000);
 }
 
 document.getElementById('strategyAmount').addEventListener('keydown', e => {

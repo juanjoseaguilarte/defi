@@ -59,6 +59,43 @@ function getDb() {
             synced_at TEXT DEFAULT (datetime('now'))
         );
 
+        CREATE TABLE IF NOT EXISTS executed_strategies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_token TEXT NOT NULL,
+            amount REAL NOT NULL,
+            market_phase TEXT,
+            main_asset TEXT,
+            strategy_json TEXT,
+            status TEXT DEFAULT 'active',
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS executed_steps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            strategy_id INTEGER NOT NULL,
+            step_num INTEGER NOT NULL,
+            done INTEGER DEFAULT 0,
+            entry_price REAL,
+            lp_range_low REAL,
+            lp_range_high REAL,
+            leverage REAL,
+            direction TEXT,
+            margin_amount REAL,
+            notes TEXT DEFAULT '',
+            executed_at TEXT,
+            FOREIGN KEY (strategy_id) REFERENCES executed_strategies(id),
+            UNIQUE(strategy_id, step_num)
+        );
+
+        CREATE TABLE IF NOT EXISTS alert_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            strategy_id INTEGER NOT NULL,
+            alert_type TEXT NOT NULL,
+            message TEXT NOT NULL,
+            dismissed INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
         CREATE TABLE IF NOT EXISTS positions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             device_token TEXT NOT NULL,
