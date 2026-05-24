@@ -872,9 +872,6 @@ function fmtUsd(v) {
     return Number(v).toLocaleString('es-ES', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
 }
 
-async function loadAavePosition() {
-    const dt = getDeviceToken();
-    const btn = document.getElementById('aaveRefresh');
 const RISK_COLORS = {
     bajo:        { bg: 'rgba(34,197,94,0.15)',  color: '#22c55e' },
     medio:       { bg: 'rgba(234,179,8,0.15)',  color: '#eab308' },
