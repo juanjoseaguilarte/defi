@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DeFi Dashboard">
+<meta name="description" content="Dashboard de análisis de mercado crypto en tiempo real">
+<title>DeFi Dashboard</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+
+<!-- Splash -->
+<div id="splash">
+    <div class="splash-icon">&#x1F4CA;</div>
+    <div class="splash-title">DeFi Dashboard</div>
+    <div class="splash-bar"><div class="splash-bar__fill"></div></div>
+</div>
+
+<!-- App Shell -->
+<div id="app" style="display:none">
+
+    <!-- Header -->
+    <header class="app-header">
+        <div class="header-logo">
+            <span class="header-logo__icon">&#x1F4CA;</span>
+            <span class="header-logo__text">DeFi Dashboard</span>
+        </div>
+        <div class="header-actions">
+            <span class="header-live" id="headerLive">LIVE</span>
+        </div>
+    </header>
+
+    <!-- Page Content -->
+    <div class="page-content">
+
+        <!-- RANGOS -->
+        <div id="page-rangos" class="page-view">
+            <div class="pair-scroller" id="pairScroller"></div>
+            <div class="price-hero">
+                <div class="price-hero__pair" id="currentPairLabel">BTC</div>
+                <div class="price-hero__price" id="currentPrice">&mdash;</div>
+                <div class="price-hero__meta">
+                    <span class="trend-badge" id="trendBadge">&mdash;</span>
+                    <span class="vol-badge" id="volBadge"></span>
+                </div>
+            </div>
+            <div id="rangesGrid"></div>
+            <div class="loading" id="rangeLoading">
+                <div class="spinner"></div>
+                <p>Cargando rangos...</p>
+            </div>
+        </div>
+
+        <!-- ANÁLISIS -->
+        <div id="page-analyst" class="page-view" style="display:none">
+            <div class="section-header">
+                <h2 class="section-title">Análisis de Mercado</h2>
+                <button class="refresh-btn" id="analystRefresh" onclick="loadAnalyst()">&#x21bb;</button>
+            </div>
+            <div class="analyst-updated" id="analystUpdated">&mdash;</div>
+            <div class="analyst-legend">
+                <span class="legend-item" style="color:#3b82f6">&#x1F535; E1 Acum.</span>
+                <span class="legend-item" style="color:#22c55e">&#x1F7E2; E2 Avance</span>
+                <span class="legend-item" style="color:#eab308">&#x1F7E1; E3 Distrib.</span>
+                <span class="legend-item" style="color:#ef4444">&#x1F534; E4 Declive</span>
+                <span class="legend-item" style="color:#9ca3af">&#x26AA; Rango</span>
+            </div>
+            <div class="analyst-table-wrap">
+                <table class="analyst-table" id="analystTable">
+                    <thead>
+                        <tr>
+                            <th class="col-coin">Moneda</th>
+                            <th>Mensual</th>
+                            <th>Semanal</th>
+                            <th>Diario</th>
+                            <th>6H</th>
+                        </tr>
+                    </thead>
+                    <tbody id="analystBody">
+                        <tr><td colspan="5" class="analyst-placeholder">
+                            <div class="spinner spinner--sm"></div>
+                            Cargando análisis...
+                        </td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Detail Panel -->
+            <div class="detail-panel" id="detailPanel" style="display:none">
+                <div class="detail-panel__inner">
+                    <button class="detail-panel__close" onclick="closeDetail()">&times;</button>
+                    <div class="detail-coin" id="detailCoin">&mdash;</div>
+                    <div class="detail-tf" id="detailTF">&mdash;</div>
+                    <div class="detail-phase" id="detailPhase">&mdash;</div>
+                    <div class="detail-reason" id="detailReason">&mdash;</div>
+                    <div class="detail-price">Precio: <strong id="detailPrice">&mdash;</strong></div>
+                    <div class="detail-chart-wrap" id="detailChartWrap">
+                        <div class="detail-chart-loading" id="detailChartLoading">
+                            <div class="spinner spinner--sm"></div>
+                        </div>
+                        <canvas id="detailChart" class="detail-chart-canvas"></canvas>
+                        <div class="detail-chart-legend">
+                            <span style="color:#ef4444">&#x25B2; Máx.</span>
+                            <span style="color:#22c55e">&#x25BC; Mín.</span>
+                            <span style="color:#a78bfa">&mdash; SMA20</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SEÑALES -->
+        <div id="page-signals" class="page-view" style="display:none">
+            <div class="section-header">
+                <h2 class="section-title">Señales de Trading</h2>
+                <button class="refresh-btn" id="signalsRefresh" onclick="loadSignals()">&#x21bb;</button>
+            </div>
+            <div class="signals-updated" id="signalsUpdated">&mdash;</div>
+            <div class="signals-legend">
+                <span class="legend-item" style="color:#22c55e">&#x1F7E2; Compra Fuerte</span>
+                <span class="legend-item" style="color:#06b6d4">&#x1F535; Compra</span>
+                <span class="legend-item" style="color:#ef4444">&#x1F534; Venta Fuerte</span>
+                <span class="legend-item" style="color:#eab308">&#x1F7E1; Venta</span>
+                <span class="legend-item" style="color:#a78bfa">&#x1F440; Vigilar</span>
+            </div>
+            <div class="signals-list" id="signalsList">
+                <div class="signals-placeholder">
+                    <div class="spinner spinner--sm"></div>
+                    Cargando señales...
+                </div>
+            </div>
+
+            <!-- Signal Detail -->
+            <div class="signal-detail" id="signalDetail" style="display:none">
+                <div class="signal-detail__inner">
+                    <button class="detail-panel__close" onclick="closeSignalDetail()">&times;</button>
+                    <div class="signal-detail__header" id="sigDetailHeader">&mdash;</div>
+                    <div class="signal-detail__score" id="sigDetailScore">&mdash;</div>
+                    <div class="signal-detail__phase" id="sigDetailPhase">&mdash;</div>
+                    <div class="signal-detail__price" id="sigDetailPrice">&mdash;</div>
+                    <div class="signal-detail__sma" id="sigDetailSMA">&mdash;</div>
+                    <div class="signal-detail__levels" id="sigDetailLevels">&mdash;</div>
+                    <div class="signal-detail__wyckoff" id="sigDetailWyckoff" style="display:none">&mdash;</div>
+                    <div class="signal-detail__reasons" id="sigDetailReasons"></div>
+                    <div class="signal-detail__time" id="sigDetailTime">&mdash;</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AAVE -->
+        <div id="page-aave" class="page-view" style="display:none">
+            <div class="section-header">
+                <h2 class="section-title">Aave Tracker</h2>
+                <button class="refresh-btn" id="aaveRefresh" onclick="loadAavePosition()">&#x21bb;</button>
+            </div>
+
+            <!-- No position form -->
+            <div id="aaveNoPosition" style="display:none">
+                <div class="aave-empty">
+                    <div class="aave-empty__icon">&#x1F3E6;</div>
+                    <div class="aave-empty__text">No tienes una posición registrada</div>
+                    <div class="aave-empty__sub">Introduce los datos de tu posición en Aave para monitorizar tu Health Factor</div>
+                </div>
+                <div class="aave-form-wrap">
+                    <div class="aave-form__group">
+                        <label class="aave-form__label">Colateral</label>
+                        <div class="aave-form__row">
+                            <input type="number" class="aave-form__input" id="aaveCollQty" placeholder="Cantidad" step="any" min="0">
+                            <select class="aave-form__select" id="aaveCollCoin">
+                                <option value="BTC">BTC</option>
+                                <option value="ETH">ETH</option>
+                                <option value="SOL">SOL</option>
+                                <option value="USDC">USDC</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="aave-form__group">
+                        <label class="aave-form__label">Deuda</label>
+                        <div class="aave-form__row">
+                            <input type="number" class="aave-form__input" id="aaveDebtQty" placeholder="Cantidad" step="any" min="0">
+                            <select class="aave-form__select" id="aaveDebtCoin">
+                                <option value="USDC">USDC</option>
+                                <option value="ETH">ETH</option>
+                                <option value="BTC">BTC</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="aave-form__group">
+                        <label class="aave-form__label">Alerta Health Factor</label>
+                        <input type="number" class="aave-form__input" id="aaveHfThreshold" placeholder="1.80" step="0.01" min="1" max="10" value="1.80">
+                    </div>
+                    <div class="aave-form__group">
+                        <label class="aave-form__label">Notas (opcional)</label>
+                        <input type="text" class="aave-form__input" id="aaveNotes" placeholder="Ej: Aave v3 Arbitrum">
+                    </div>
+                    <button class="btn-primary" onclick="saveAavePosition()">Guardar Posición</button>
+                </div>
+            </div>
+
+            <!-- Has position -->
+            <div id="aaveHasPosition" style="display:none">
+                <div class="aave-hf-hero">
+                    <div class="aave-hf-hero__label">Health Factor</div>
+                    <div class="aave-hf-hero__display">
+                        <span class="aave-hf-hero__current" id="aaveHfCurrent">&mdash;</span>
+                        <span class="aave-hf-hero__sep">/</span>
+                        <span class="aave-hf-hero__threshold" id="aaveHfThresholdDisplay">1.80</span>
+                    </div>
+                    <div class="aave-hf-hero__bar">
+                        <div class="aave-hf-hero__bar-fill" id="aaveHfBar"></div>
+                        <div class="aave-hf-hero__bar-marker" id="aaveHfMarker"></div>
+                    </div>
+                    <div class="aave-hf-hero__status" id="aaveHfStatus">Monitorizando...</div>
+                </div>
+
+                <div class="aave-section">
+                    <div class="aave-section__title">Colateral</div>
+                    <div class="aave-card">
+                        <div id="aavePosCollList">&mdash;</div>
+                        <div class="aave-card__total">
+                            <span>Total colateral</span>
+                            <span id="aavePosCollUsd">&mdash;</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="aave-section">
+                    <div class="aave-section__title">Deuda</div>
+                    <div class="aave-card">
+                        <div id="aavePosDebtList">&mdash;</div>
+                        <div class="aave-card__total">
+                            <span>Total deuda</span>
+                            <span id="aavePosDebtUsd">&mdash;</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="aave-section">
+                    <div class="aave-section__title">Alerta de Liquidación</div>
+                    <div class="aave-card">
+                        <div class="aave-alert-row">
+                            <span>Avisar si HF baja de:</span>
+                            <div class="aave-alert-row__input">
+                                <input type="number" class="aave-form__input" id="aaveHfThresholdEdit" step="0.01" min="1" max="10" value="1.80">
+                                <button class="btn-sm" id="aaveHfSaveBtn" onclick="saveHfThreshold()">Guardar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="aave-section">
+                    <div class="aave-card" style="display:flex;gap:8px">
+                        <button class="btn-secondary" onclick="editAavePosition()" style="flex:1">Editar</button>
+                        <button class="btn-danger" onclick="showCloseConfirm()" style="flex:1">Cerrar Posición</button>
+                    </div>
+                    <div id="aaveCloseConfirm" style="display:none" class="aave-confirm">
+                        <p>¿Confirmas cerrar la posición?</p>
+                        <div style="display:flex;gap:8px">
+                            <button class="btn-danger" onclick="confirmClosePosition()" style="flex:1">Sí, cerrar</button>
+                            <button class="btn-secondary" onclick="cancelCloseConfirm()" style="flex:1">Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="aave-section">
+                    <div class="aave-section__title">Historial</div>
+                    <div id="aaveActionsList">
+                        <div class="aave-empty__sub">Cargando...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AJUSTES -->
+        <div id="page-settings" class="page-view" style="display:none">
+            <h2 class="section-title" style="margin-bottom:20px">Ajustes</h2>
+            <div class="settings-section">
+                <div class="settings-section__title">Información</div>
+                <div class="settings-row">
+                    <span>Versión</span><span class="text-muted">1.0.0</span>
+                </div>
+                <div class="settings-row">
+                    <span>Datos</span><span class="text-muted">Binance API</span>
+                </div>
+                <div class="settings-row">
+                    <span>Rangos — refresh</span><span class="text-muted">Cada 5 min</span>
+                </div>
+                <div class="settings-row">
+                    <span>Análisis — refresh</span><span class="text-muted">Cada 10 min</span>
+                </div>
+                <div class="settings-row">
+                    <span>Precio live</span><span class="text-muted">Cada 5 seg</span>
+                </div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section__title">Pares monitorizados</div>
+                <div class="settings-coins">BTC, ETH, SOL, UNI, JUP, AAVE</div>
+                <div class="settings-coins text-muted" style="margin-top:4px">Sintéticos: BTC/ETH, BTC/SOL, ETH/SOL, SOL/JUP</div>
+            </div>
+        </div>
+
+    </div><!-- /page-content -->
+
+    <!-- Bottom Navigation -->
+    <nav class="bottom-nav">
+        <div class="bottom-nav__items">
+            <button class="nav-item nav-item--active" data-page="rangos">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                Rangos
+            </button>
+            <button class="nav-item" data-page="analyst">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                Análisis
+            </button>
+            <button class="nav-item" data-page="signals">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                Señales
+            </button>
+            <button class="nav-item" data-page="aave">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M6 12h12"/></svg>
+                Aave
+            </button>
+            <button class="nav-item" data-page="settings">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                Ajustes
+            </button>
+        </div>
+        <div class="bottom-nav__safe" aria-hidden="true"></div>
+    </nav>
+
+</div><!-- /app -->
+
+<script src="/assets/app.js"></script>
+</body>
+</html>
