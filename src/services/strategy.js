@@ -163,9 +163,14 @@ function buildStrategy(amount, rates, phases) {
     breakdown.push({ label: `Borrow ${borrowAsset} Aave`, amount: borrowAmount, apy: -borrowApy });
     totalEstApy -= borrowApy * (borrowAmount / amount);
 
-    // ── Step 3: Hedge with perps (based on market phase) ──
+    // ── Distribute borrow across: hedge + IL hedge + LP ──
     const hedgePct = isBearish ? 0.15 : (isBullish ? 0.05 : 0.10);
+    const ilHedgePct = 0.05;
     const hedgeAmount = Math.floor(borrowAmount * hedgePct);
+    const ilHedgeAmount = Math.floor(borrowAmount * ilHedgePct);
+    const lpAmount = borrowAmount - hedgeAmount - ilHedgeAmount;
+
+    // ── Step 3: Hedge with perps (based on market phase) ──
     const hedgeLeverage = 10;
     const hedgeExposure = hedgeAmount * hedgeLeverage;
 
@@ -197,14 +202,13 @@ function buildStrategy(amount, rates, phases) {
     totalEstApy += fundingApy * (hedgeAmount / amount);
 
     // ── Step 4: Provide liquidity in pool ──
-    const lpAmount = borrowAmount - hedgeAmount;
     const lpPair = `${mainAsset}-USDC`;
     const lpBaseApy = rates.lp[lpPair] || 20;
 
     steps.push({
         step: 4,
         action: `Pool de liquidez ${lpPair}`,
-        detail: `Proveer ${fmtUsd(lpAmount)} en el pool ${lpPair} (Uniswap V3 / Camelot). Mitad en ${mainAsset}, mitad en USDC del borrow.`,
+        detail: `Proveer ${fmtUsd(lpAmount)} en el pool ${lpPair} (Uniswap V3 / Camelot). Del borrow de ${fmtUsd(borrowAmount)}: ${fmtUsd(hedgeAmount)} hedge + ${fmtUsd(ilHedgeAmount)} hedge IL + ${fmtUsd(lpAmount)} LP.`,
         token: lpPair,
         amount: lpAmount,
         apy: lpBaseApy,
@@ -233,7 +237,6 @@ function buildStrategy(amount, rates, phases) {
     totalEstApy += (leveragedApy - lpBaseApy) * (lpAmount / amount);
 
     // ── Step 6: Hedge LP impermanent loss ──
-    const ilHedgeAmount = Math.floor(lpAmount * 0.10);
     const ilHedgeDirection = 'SHORT';
     const ilHedgeLeverage = 5;
 
