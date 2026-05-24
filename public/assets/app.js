@@ -1213,23 +1213,38 @@ async function loadStrategyHistory() {
             const progress = s.steps_total > 0 ? `${s.steps_done}/${s.steps_total} pasos` : '';
             const date = new Date(s.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-            html += `<div class="history-card" onclick="loadHistoryStrategy(${s.id})">
-                <div class="history-card__top">
+            html += `<div class="history-card">
+                <div class="history-card__top" onclick="loadHistoryStrategy(${s.id})">
                     <span class="history-card__amount">${fmtUsd(s.amount)}</span>
                     ${statusBadge}
                 </div>
-                <div class="history-card__mid">
+                <div class="history-card__mid" onclick="loadHistoryStrategy(${s.id})">
                     <span>${s.main_asset || '—'}</span>
                     <span class="history-card__phase">${s.market_phase || '—'}</span>
                     <span>${progress}</span>
                 </div>
-                <div class="history-card__date">${date}</div>
+                <div class="history-card__bottom">
+                    <span class="history-card__date">${date}</span>
+                    <button class="history-card__delete" onclick="event.stopPropagation();deleteStrategy(${s.id})">Eliminar</button>
+                </div>
             </div>`;
         }
 
         html += '</div>';
         el.innerHTML = html;
     } catch (_) {}
+}
+
+async function deleteStrategy(id) {
+    try {
+        const resp = await fetch(`${APP_BASE}/api/tracker/${id}`, { method: 'DELETE' });
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.error);
+        if (activeTracker?.strategy?.id === id) activeTracker = null;
+        loadStrategyHistory();
+    } catch (e) {
+        console.error('Delete error:', e);
+    }
 }
 
 async function loadHistoryStrategy(id) {

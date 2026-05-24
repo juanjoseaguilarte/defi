@@ -975,9 +975,20 @@ input, select { font-family: var(--font); }
     padding: 1px 6px; border-radius: 4px; font-size: 0.65rem;
     background: var(--card2); color: var(--text-3);
 }
-.history-card__date {
-    font-size: 0.65rem; color: var(--text-3); margin-top: 4px;
+.history-card__bottom {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 4px;
 }
+.history-card__date {
+    font-size: 0.65rem; color: var(--text-3);
+}
+.history-card__delete {
+    font-size: 0.6rem; font-weight: 700; padding: 3px 10px;
+    border-radius: 4px; border: 1px solid rgba(239,68,68,0.2);
+    background: rgba(239,68,68,0.08); color: var(--bear);
+    cursor: pointer;
+}
+.history-card__delete:active { background: rgba(239,68,68,0.2); }
 
 .tracker-alert__dismiss {
     flex-shrink: 0; padding: 4px 10px; font-size: 0.7rem; font-weight: 700;

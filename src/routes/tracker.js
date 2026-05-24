@@ -163,6 +163,19 @@ router.post('/close', (req, res) => {
     res.json({ ok: true });
 });
 
+// DELETE /api/tracker/:id — delete a strategy permanently
+router.delete('/:id', (req, res) => {
+    const id = parseInt(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
+
+    const db = getDb();
+    db.prepare('DELETE FROM alert_log WHERE strategy_id = ?').run(id);
+    db.prepare('DELETE FROM executed_steps WHERE strategy_id = ?').run(id);
+    db.prepare('DELETE FROM executed_strategies WHERE id = ?').run(id);
+    db.close();
+    res.json({ ok: true });
+});
+
 // GET /api/tracker/check — check alerts for active strategy
 router.get('/check', async (req, res) => {
     const dt = getDeviceToken(req);
