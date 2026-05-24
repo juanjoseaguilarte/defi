@@ -796,7 +796,7 @@ input, select { font-family: var(--font); }
 .portfolio-alloc__amount { font-weight: 700; min-width: 70px; text-align: right; }
 .portfolio-alloc__apy { font-weight: 800; min-width: 50px; text-align: right; }
 
-.strategy-list { display: flex; flex-direction: column; gap: 10px; }
+.strategy-list { display: flex; flex-direction: column; gap: 10px; padding-bottom: 40px; }
 .strategy-card {
     background: var(--card); border: 1px solid var(--border);
     border-radius: var(--radius); padding: 14px 16px;
