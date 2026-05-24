@@ -115,27 +115,24 @@ function openStrategy(phase, cash, price, asset, pos, date, log) {
         log.push({ date, type: 'open', message: `E2 ALCISTA: Colateral $${cash.toFixed(0)}, Borrow $${borrow}, LP $${lp} rango $${pos.lp_range_low.toFixed(0)}-$${pos.lp_range_high.toFixed(0)}, LONG x${LONG_LEV} $${lm} (entrada $${price.toFixed(0)})` });
 
     } else if (phase === 'accumulation') {
+        // E1: construir posición LP delta neutral, sin short especulativo
         pos.aave_supply = cash;
         const borrow = Math.floor(cash * 0.40);
         pos.aave_borrow = borrow;
-        const lp = Math.floor(borrow * 0.85);
+        const lp = Math.floor(borrow * 0.95);
         pos.lp_amount = lp; pos.lp_entry = price;
         pos.lp_range_low = price * 0.90; pos.lp_range_high = price * 1.10;
-        const hm = Math.floor(borrow * 0.10);
-        pos.short_margin = hm; pos.short_lev = SHORT_LEV;
-        pos.short_size = hm * SHORT_LEV; pos.short_entry = price;
         allocated = cash;
-        log.push({ date, type: 'open', message: `E1 ACUMULACIÓN: Colateral $${cash.toFixed(0)}, Borrow $${borrow}, LP $${lp}, SHORT hedge x${SHORT_LEV} $${hm} (entrada $${price.toFixed(0)})` });
+        log.push({ date, type: 'open', message: `E1 ACUMULACIÓN: Colateral $${cash.toFixed(0)}, Borrow $${borrow}, LP $${lp} rango $${pos.lp_range_low.toFixed(0)}-$${pos.lp_range_high.toFixed(0)}. Sin short — acumulando.` });
 
     } else if (phase === 'distribution') {
+        // E3: NO abrir short — solo reducir exposición y esperar confirmación de E4
+        // El short se abrirá cuando confirme E4 (bear), no antes
         pos.aave_supply = cash;
-        const borrow = Math.floor(cash * 0.35);
+        const borrow = Math.floor(cash * 0.25);
         pos.aave_borrow = borrow;
-        const sm = Math.floor(cash * 0.05);
-        pos.short_margin = sm; pos.short_lev = SHORT_LEV;
-        pos.short_size = sm * SHORT_LEV; pos.short_entry = price;
         allocated = cash;
-        log.push({ date, type: 'open', message: `E3 DISTRIBUCIÓN: Colateral $${cash.toFixed(0)}, Borrow+Venta $${borrow}, SHORT x${SHORT_LEV} $${sm} (entrada $${price.toFixed(0)})` });
+        log.push({ date, type: 'open', message: `E3 DISTRIBUCIÓN: Colateral $${cash.toFixed(0)}, Borrow conservador $${borrow}. SIN short — esperando confirmación E4.` });
     }
     return allocated;
 }
@@ -194,13 +191,14 @@ function runBacktest(candles, amount, asset) {
                     cash += closePerps(pos, price, date, log);
                     log.push({ date, type: 'phase_adjust', message: `Ajuste menor: ${prevPhase} → ${newPhase}. LP mantenido.` });
                     confirmedPhase = newPhase;
-                    if (['accumulation', 'distribution', 'bear'].includes(newPhase)) {
+                    if (newPhase === 'bear') {
+                        // Only open short when confirmed E4 bear
                         const hm = Math.floor(cash * 0.05);
                         if (hm > 50) {
                             pos.short_margin = hm; pos.short_lev = SHORT_LEV;
                             pos.short_size = hm * SHORT_LEV; pos.short_entry = price;
                             cash -= hm;
-                            log.push({ date, type: 'adjust_open', message: `SHORT hedge x${SHORT_LEV} $${hm} (entrada $${price.toFixed(0)})` });
+                            log.push({ date, type: 'adjust_open', message: `SHORT x${SHORT_LEV} $${hm} (entrada $${price.toFixed(0)}) — E4 confirmada` });
                         }
                     } else if (newPhase === 'bull') {
                         const lm = Math.floor(cash * 0.03);

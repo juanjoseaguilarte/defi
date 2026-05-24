@@ -385,26 +385,17 @@ function buildDistributionStrategy(amount, rates, phases, prices) {
     totalApy -= borrowApy * (borrowAmount / amount);
 
     steps.push({
-        step: 3, action: `Vender ${asset} → USDC (short sintético)`,
-        detail: `Vender ${fmtUsd(borrowAmount)} de ${asset} a $${fmtPrice(price)}. Si cae, recompras más barato y devuelves a Aave con beneficio.`,
-        token: asset, amount: borrowAmount, apy: 0, protocol: 'Swap',
-        entry_price: price, take_profit: price * 0.85,
+        step: 3, action: 'Reducir exposición — NO abrir short',
+        detail: `E3 es "prepararse para la caída", NO "la caída ya empezó". Mantener ${fmtUsd(borrowAmount)} en USDC del borrow. El short solo se abrirá cuando se confirme E4 (bajista). Abrir short aquí suele perder dinero porque el precio puede seguir subiendo.`,
+        token: 'USDC', amount: borrowAmount, apy: 0, protocol: 'Wallet',
+        entry_price: price,
     });
 
-    const shortMargin = Math.floor(amount * 0.05);
-    const shortLev = 3;
-    const sl = calcStopLoss(price, shortLev, 'SHORT');
-    const tp = calcTakeProfit(price, shortLev, 'SHORT');
-    const liq = calcLiquidationPrice(price, shortLev, 'SHORT');
     steps.push({
-        step: 4, action: `SHORT ${asset} x${shortLev}`,
-        detail: `SHORT ${fmtUsd(shortMargin * shortLev)} con ${fmtUsd(shortMargin)} margen. Entrada: $${fmtPrice(price)}`,
-        token: asset, amount: shortMargin, exposure: shortMargin * shortLev,
-        leverage: shortLev, direction: 'SHORT', protocol: 'Hyperliquid',
-        apy: getFundingApy(rates, asset, 'SHORT'),
-        entry_price: price, stop_loss: sl, take_profit: tp, liquidation: liq,
+        step: 4, action: 'Vigilar confirmación de E4',
+        detail: `Si ${asset} confirma E4 (precio >5% bajo SMA20 + pendiente negativa): abrir SHORT x3 con ~5% del capital ($${fmtUsd(Math.floor(amount * 0.05))}). Si vuelve a E2: rotar a estrategia alcista sin pérdida.`,
+        token: asset, amount: 0, apy: 0, protocol: 'Esperar señal',
     });
-    totalApy += getFundingApy(rates, asset, 'SHORT') * (shortMargin / amount);
 
     const stableLpAmount = borrowAmount;
     steps.push({
