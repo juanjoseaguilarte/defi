@@ -18,7 +18,10 @@ router.get('/', async (req, res) => {
             return res.json(cachedStrategy);
         }
 
-        const data = await getStrategy(amount);
+        const prices = {};
+        if (req.query.btcPrice) prices.BTC = parseFloat(req.query.btcPrice);
+        if (req.query.ethPrice) prices.ETH = parseFloat(req.query.ethPrice);
+        const data = await getStrategy(amount, prices);
         cachedStrategy = data;
         cacheTime = Date.now();
         cacheAmount = amount;

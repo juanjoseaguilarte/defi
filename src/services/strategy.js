@@ -129,8 +129,49 @@ function getFundingApy(rates, asset, direction) {
     return -Math.abs(f.annualized) * 100;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// PRICE-BASED CALCULATIONS
+// ═══════════════════════════════════════════════════════════════
+
+function calcLiquidationPrice(entryPrice, leverage, direction) {
+    if (direction === 'LONG') return entryPrice * (1 - 0.9 / leverage);
+    return entryPrice * (1 + 0.9 / leverage);
+}
+
+function calcStopLoss(entryPrice, leverage, direction, riskPct = 0.5) {
+    if (direction === 'LONG') return entryPrice * (1 - riskPct / leverage);
+    return entryPrice * (1 + riskPct / leverage);
+}
+
+function calcTakeProfit(entryPrice, leverage, direction, targetPct = 1.5) {
+    if (direction === 'LONG') return entryPrice * (1 + targetPct / leverage);
+    return entryPrice * (1 - targetPct / leverage);
+}
+
+function calcLpRange(price, regime) {
+    const widths = { bear: [0.20, 0.05], bull: [0.05, 0.25], accumulation: [0.08, 0.08], distribution: [0.12, 0.06] };
+    const [downPct, upPct] = widths[regime] || [0.10, 0.10];
+    return { low: price * (1 - downPct), high: price * (1 + upPct) };
+}
+
+function calcAaveLiqPrice(collateralUsd, borrowUsd, borrowAssetPrice, ltv) {
+    if (borrowUsd <= 0) return 0;
+    return borrowAssetPrice * (collateralUsd * ltv) / borrowUsd;
+}
+
+function fmtPrice(v) {
+    if (!v || v === 0) return '—';
+    if (v > 1000) return v.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    if (v > 1) return v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+    return v.toLocaleString('en-US', { maximumFractionDigits: 4 });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PLAYBOOKS
+// ═══════════════════════════════════════════════════════════════
+
 // ── E4 BAJISTA: Máxima protección, stables, shorts ──
-function buildBearStrategy(amount, rates, phases) {
+function buildBearStrategy(amount, rates, phases, prices) {
     const steps = [];
     let totalApy = 0;
     const asset = phases.ETH?.type === 'bear' ? 'ETH' : 'BTC';
@@ -398,14 +439,14 @@ function finish(amount, marketPhase, phases, mainAsset, steps, totalApy, warning
     };
 }
 
-function buildStrategy(amount, rates, phases) {
+function buildStrategy(amount, rates, phases, prices) {
     const regime = getMarketRegime(phases);
 
     switch (regime) {
-        case 'bear':         return buildBearStrategy(amount, rates, phases);
-        case 'bull':         return buildBullStrategy(amount, rates, phases);
-        case 'distribution': return buildDistributionStrategy(amount, rates, phases);
-        default:             return buildAccumulationStrategy(amount, rates, phases);
+        case 'bear':         return buildBearStrategy(amount, rates, phases, prices);
+        case 'bull':         return buildBullStrategy(amount, rates, phases, prices);
+        case 'distribution': return buildDistributionStrategy(amount, rates, phases, prices);
+        default:             return buildAccumulationStrategy(amount, rates, phases, prices);
     }
 }
 
@@ -417,16 +458,23 @@ function fmtUsd(v) {
 // MAIN
 // ═══════════════════════════════════════════════════════════════
 
-async function getStrategy(amount) {
+async function getStrategy(amount, livePrices = {}) {
     const [rates, phases] = await Promise.all([
         fetchLiveRates(),
         fetchMarketPhases(),
     ]);
 
-    const strategy = buildStrategy(amount, rates, phases);
+    // Use live prices from frontend
+    const prices = {
+        BTC: livePrices.BTC || 0,
+        ETH: livePrices.ETH || 0,
+    };
+
+    const strategy = buildStrategy(amount, rates, phases, prices);
 
     return {
         ...strategy,
+        prices,
         rates_source: {
             aave_supply_usdc: rates.aave.supply.USDC,
             aave_borrow_eth: rates.aave.borrow.ETH,
