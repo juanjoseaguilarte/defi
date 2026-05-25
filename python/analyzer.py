@@ -163,6 +163,27 @@ def analyze_tf(df):
     bull_candles = (last5['close'] > last5['open']).sum()
     bear_candles = (last5['close'] < last5['open']).sum()
 
+    # Momentum label
+    if bull_candles >= 4:
+        momentum = 'bullish'
+    elif bear_candles >= 4:
+        momentum = 'bearish'
+    else:
+        momentum = 'neutral'
+
+    # Bias label (for frontend)
+    above = bool(price > last_sma20)
+    if above and slope > 0.1:
+        bias = 'bullish'
+    elif not above and slope < -0.1:
+        bias = 'bearish'
+    elif above and slope < -0.1:
+        bias = 'weakBullish'
+    elif not above and slope > 0.1:
+        bias = 'weakBearish'
+    else:
+        bias = 'neutral'
+
     return {
         'price': round(price, 2),
         'sma20': round(last_sma20, 2),
@@ -170,8 +191,13 @@ def analyze_tf(df):
         'ema9': round(ema9.iloc[-1], 2),
         'ema21': round(ema21.iloc[-1], 2),
         'sma20_slope': round(slope, 3),
-        'above_sma20': bool(price > last_sma20),
+        'slope': round(slope, 3),
+        'above_sma20': above,
+        'aboveSma': above,
         'dist_pct': round((price - last_sma20) / last_sma20 * 100, 2),
+        'distPct': round((price - last_sma20) / last_sma20 * 100, 2),
+        'bias': bias,
+        'momentum': momentum,
         'rsi': round(rsi_val.iloc[-1], 1),
         'macd': round(macd_line.iloc[-1], 4),
         'macd_signal': round(macd_signal.iloc[-1], 4),
@@ -208,8 +234,8 @@ def find_sr_zones(df):
     sup_below.sort(key=lambda x: -x['price'])
 
     return {
-        'resistances': [{'price': round(r['price'], 2), 'dist_pct': round((r['price'] - price) / price * 100, 2)} for r in res_above[:3]],
-        'supports': [{'price': round(s['price'], 2), 'dist_pct': round((price - s['price']) / price * 100, 2)} for s in sup_below[:3]],
+        'resistances': [{'price': round(r['price'], 2), 'distPct': round((r['price'] - price) / price * 100, 2)} for r in res_above[:3]],
+        'supports': [{'price': round(s['price'], 2), 'distPct': round((price - s['price']) / price * 100, 2)} for s in sup_below[:3]],
     }
 
 
