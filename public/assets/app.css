@@ -1352,3 +1352,54 @@ input, select { font-family: var(--font); }
 .dt-h-close--tp { background: rgba(34,197,94,0.1); color: var(--bull); }
 .dt-h-close--sl { background: rgba(239,68,68,0.1); color: var(--bear); }
 .dt-h-close:hover { opacity: 0.8; }
+
+/* Enter trade form */
+.dt-enter-btn {
+    width: 100%; padding: 12px; margin-top: 10px; border-radius: 10px; font-size: 0.8rem;
+    font-weight: 800; background: rgba(99,102,241,0.12); color: var(--accent);
+    border: 1px dashed rgba(99,102,241,0.3); cursor: pointer; transition: all 0.2s;
+}
+.dt-enter-btn:hover { background: rgba(99,102,241,0.2); }
+
+.dt-enter-form {
+    margin-top: 10px; padding: 12px; background: rgba(0,0,0,0.25); border-radius: 10px;
+    border: 1px solid rgba(99,102,241,0.15); animation: fadeSlide 0.2s ease;
+}
+.dt-enter-form__row { display: flex; gap: 8px; margin-bottom: 8px; }
+.dt-enter-form__row > div { flex: 1; }
+.dt-enter-form__row label {
+    display: block; font-size: 0.6rem; color: var(--text-3); margin-bottom: 3px;
+    text-transform: uppercase; letter-spacing: 0.3px;
+}
+.dt-enter-input {
+    width: 100%; padding: 8px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 700;
+    background: rgba(255,255,255,0.05); color: var(--text-1); border: 1px solid rgba(255,255,255,0.08);
+    box-sizing: border-box;
+}
+.dt-confirm-btn {
+    width: 100%; padding: 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 800;
+    background: var(--accent); color: #fff; border: none; cursor: pointer; margin-top: 18px;
+}
+.dt-confirm-btn:hover { opacity: 0.9; }
+
+/* Active tracking */
+.dt-tracking { margin-bottom: 14px; }
+.dt-tracking__title {
+    font-size: 0.7rem; font-weight: 800; color: var(--accent); text-transform: uppercase;
+    letter-spacing: 0.5px; margin-bottom: 8px;
+}
+.dt-track-card {
+    background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.15);
+    border-radius: 12px; padding: 12px; margin-bottom: 8px;
+}
+.dt-track-card__top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.dt-track-card__bar {
+    height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; margin-bottom: 6px;
+}
+.dt-track-card__fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+.dt-track-card__levels {
+    display: flex; justify-content: space-between; font-size: 0.62rem; color: var(--text-2); margin-bottom: 6px;
+}
+.dt-track-card__meta {
+    display: flex; gap: 10px; align-items: center; font-size: 0.62rem; color: var(--text-3);
+}

@@ -1778,6 +1778,7 @@ const DT_WATCH_INTERVAL_MS = 3 * 60 * 1000;
 const DT_WATCH_MAX_HOURS = 6;
 const DT_ALL_ASSETS = ['ETH', 'BTC', 'SOL'];
 let dtOpenSignals = [];
+let dtTrackInterval = null;
 
 async function analyzeDayTrade() {
     const checks = document.querySelectorAll('.dt-asset-check:checked');
@@ -1931,6 +1932,9 @@ function renderDayTradeMulti(trades) {
     const el = document.getElementById('dtResult');
     let html = '';
 
+    // Active tracking
+    html += '<div id="dtActiveTracking"></div>';
+
     // Watch button
     const isWatching = !!dtWatchInterval;
     html += `<div class="dt-watch-row">
@@ -2047,6 +2051,139 @@ async function closeDtSignal(id, result) {
     loadDtHistory();
 }
 
+function showEnterForm(tradeJson) {
+    const d = typeof tradeJson === 'string' ? JSON.parse(tradeJson) : tradeJson;
+    const el = document.getElementById('dtEnterForm-' + d.asset);
+    if (!el) return;
+    el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+async function confirmEntry(asset) {
+    const entryP = parseFloat(document.getElementById('dtEntry-' + asset)?.value);
+    const tp = parseFloat(document.getElementById('dtTp-' + asset)?.value);
+    const sl = parseFloat(document.getElementById('dtSl-' + asset)?.value);
+    const lev = parseInt(document.getElementById('dtLev-' + asset)?.value) || 3;
+    const margin = parseFloat(document.getElementById('dtMargin-' + asset)?.value) || 0;
+    const signalDir = document.getElementById('dtDir-' + asset)?.value;
+    const signalId = document.getElementById('dtSigId-' + asset)?.value;
+
+    if (!entryP || !tp || !sl) return;
+
+    // Save to DB first if no ID yet
+    let id = signalId;
+    if (!id || id === 'new') {
+        const resp = await fetch(`${APP_BASE}/api/daytrader/save`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                device_token: getDeviceToken(),
+                trade: { asset, signal: signalDir, confidence: 'manual', score: 0, entry: entryP, tp, sl, rr: 0, leverage: lev, liqPrice: 0, maxHoldHours: 6, exitBy: new Date(Date.now() + 6*3600000).toISOString() },
+            }),
+        });
+        const data = await resp.json();
+        id = data.id;
+    }
+
+    await fetch(`${APP_BASE}/api/daytrader/enter`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, entry_price: entryP, tp, sl, leverage: lev, margin, signal: signalDir, asset }),
+    });
+
+    startTradeTracking();
+    loadDtHistory();
+
+    const form = document.getElementById('dtEnterForm-' + asset);
+    if (form) form.innerHTML = '<div style="color:var(--bull);font-size:0.75rem;font-weight:700;padding:8px;text-align:center">✓ Entrada confirmada — vigilando TP/SL</div>';
+}
+
+function startTradeTracking() {
+    if (dtTrackInterval) return;
+    dtTrackInterval = setInterval(checkTrackedTrades, 30000);
+    localStorage.setItem('defi_dt_tracking', '1');
+    checkTrackedTrades();
+}
+
+function stopTradeTracking() {
+    if (dtTrackInterval) { clearInterval(dtTrackInterval); dtTrackInterval = null; }
+    localStorage.removeItem('defi_dt_tracking');
+}
+
+async function checkTrackedTrades() {
+    try {
+        const resp = await fetch(`${APP_BASE}/api/daytrader/check-tracking`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_token: getDeviceToken() }),
+        });
+        const data = await resp.json();
+        if (!data.ok || !data.alerts?.length) return;
+
+        for (const a of data.alerts) {
+            if (a.type === 'tp' || a.type === 'sl') {
+                const icon = a.type === 'tp' ? '✅' : '❌';
+                showBrowserNotif({ type: 'critical', message: `${icon} ${a.message}`, category: 'dt-track', asset: a.asset });
+
+                await fetch(`${APP_BASE}/api/daytrader/close`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: a.id, result: a.type, closed_price: a.price, pnl_pct: +a.pnlPct.toFixed(2) }),
+                });
+                loadDtHistory();
+            } else if (a.type === 'near_tp' || a.type === 'near_sl') {
+                showBrowserNotif({ type: 'action', message: a.message, category: 'dt-near-' + a.type, asset: a.asset });
+            } else if (a.type === 'expired' || a.type === 'expiring') {
+                showBrowserNotif({ type: 'warning', message: a.message, category: 'dt-expire', asset: a.asset });
+            }
+        }
+
+        // Check if still tracking anything
+        const trackResp = await fetch(`${APP_BASE}/api/daytrader/tracking?device_token=${getDeviceToken()}`);
+        const trackData = await trackResp.json();
+        if (!trackData.trades?.length) stopTradeTracking();
+
+        renderActiveTracking(trackData.trades || []);
+    } catch (_) {}
+}
+
+function renderActiveTracking(trades) {
+    const el = document.getElementById('dtActiveTracking');
+    if (!el) return;
+    if (!trades.length) { el.innerHTML = ''; return; }
+
+    let html = '<div class="dt-tracking"><div class="dt-tracking__title">Operaciones activas</div>';
+    for (const t of trades) {
+        const pair = t.asset + 'USDT';
+        const price = latestPrices[pair] || 0;
+        const isLong = t.signal === 'LONG';
+        const pnl = price ? (isLong ? (price - t.entry_price) / t.entry_price * t.leverage * 100 : (t.entry_price - price) / t.entry_price * t.leverage * 100) : 0;
+        const pnlColor = pnl >= 0 ? 'var(--bull)' : 'var(--bear)';
+        const dirColor = isLong ? 'var(--bull)' : 'var(--bear)';
+
+        const totalRange = Math.abs(t.tp - t.sl);
+        const distToTp = Math.abs(price - t.tp);
+        const tpPct = totalRange > 0 ? Math.max(0, Math.min(100, (1 - distToTp / totalRange) * 100)) : 0;
+
+        html += `<div class="dt-track-card">
+            <div class="dt-track-card__top">
+                <span style="color:${dirColor};font-weight:800">${t.signal} ${t.asset}</span>
+                <span style="color:${pnlColor};font-weight:800;font-size:0.9rem">${pnl >= 0 ? '+' : ''}${pnl.toFixed(1)}%</span>
+            </div>
+            <div class="dt-track-card__bar">
+                <div class="dt-track-card__fill" style="width:${tpPct}%;background:${pnlColor}"></div>
+            </div>
+            <div class="dt-track-card__levels">
+                <span style="color:var(--bear)">SL $${fmtP(t.sl)}</span>
+                <span>$${fmtP(price)}</span>
+                <span style="color:var(--bull)">TP $${fmtP(t.tp)}</span>
+            </div>
+            <div class="dt-track-card__meta">
+                <span>Entrada: $${fmtP(t.entry_price)}</span>
+                <span>x${t.leverage}</span>
+                <button class="dt-h-close" onclick="closeDtSignal(${t.id},'manual')">Cerrar</button>
+            </div>
+        </div>`;
+    }
+    html += '</div>';
+    el.innerHTML = html;
+}
+
 function renderSingleTrade(d) {
     const isLong = d.signal === 'LONG';
     const isShort = d.signal === 'SHORT';
@@ -2084,6 +2221,23 @@ function renderSingleTrade(d) {
                 <div>Ganancia: <span style="color:var(--bull)">${d.potentialPnl.win}</span> / Pérdida: <span style="color:var(--bear)">${d.potentialPnl.loss}</span></div>
             </div>
             <div class="dt-timer">Cerrar antes de: <b>${new Date(d.exitBy).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</b> (${d.maxHoldHours}h max)</div>
+            <button class="dt-enter-btn" onclick="showEnterForm('${d.asset}')">He entrado</button>
+            <div class="dt-enter-form" id="dtEnterForm-${d.asset}" style="display:none">
+                <input type="hidden" id="dtDir-${d.asset}" value="${d.signal}">
+                <input type="hidden" id="dtSigId-${d.asset}" value="new">
+                <div class="dt-enter-form__row">
+                    <div><label>Entrada</label><input type="number" step="any" id="dtEntry-${d.asset}" value="${d.entry}" class="dt-enter-input"></div>
+                    <div><label>TP</label><input type="number" step="any" id="dtTp-${d.asset}" value="${d.tp}" class="dt-enter-input"></div>
+                </div>
+                <div class="dt-enter-form__row">
+                    <div><label>SL</label><input type="number" step="any" id="dtSl-${d.asset}" value="${d.sl}" class="dt-enter-input"></div>
+                    <div><label>x Leverage</label><input type="number" id="dtLev-${d.asset}" value="${d.leverage}" class="dt-enter-input"></div>
+                </div>
+                <div class="dt-enter-form__row">
+                    <div><label>Margen ($)</label><input type="number" step="any" id="dtMargin-${d.asset}" placeholder="18.11" class="dt-enter-input"></div>
+                    <div><button class="dt-confirm-btn" onclick="confirmEntry('${d.asset}')">Confirmar entrada</button></div>
+                </div>
+            </div>
         </div>`;
     } else {
         html += `<div class="dt-signal dt-signal--no">
@@ -2171,3 +2325,6 @@ if (Notification?.permission === 'granted' && localStorage.getItem('defi_notif_e
 
 // Restore daytrader watch if it was running
 restoreDtWatch();
+
+// Restore trade tracking if active
+if (localStorage.getItem('defi_dt_tracking')) startTradeTracking();

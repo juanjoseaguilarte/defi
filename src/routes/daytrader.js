@@ -53,7 +53,130 @@ router.post('/close', (req, res) => {
     db.prepare(`UPDATE daytrade_signals SET status = 'closed', result = ?, closed_price = ?, pnl_pct = ?, closed_at = datetime('now') WHERE id = ?`)
         .run(result || 'manual', closed_price || 0, pnl_pct || 0, id);
     db.close();
+
+    const icon = result === 'tp' ? '✅' : result === 'sl' ? '❌' : '⏹';
+    const label = result === 'tp' ? 'TAKE PROFIT' : result === 'sl' ? 'STOP LOSS' : 'CERRADO MANUAL';
+    sendTelegram(`${icon} *${label}*\nPrecio cierre: $${fmtP(closed_price)}\nP&L: ${pnl_pct >= 0 ? '+' : ''}${pnl_pct?.toFixed(1) || 0}%`);
+
     res.json({ ok: true });
+});
+
+// POST /api/daytrader/enter — Mark that user entered the trade
+router.post('/enter', (req, res) => {
+    const { id, entry_price, tp, sl, leverage, margin } = req.body;
+    if (!id) return res.status(400).json({ error: 'id required' });
+
+    const db = getDb();
+    const updates = [];
+    const params = [];
+
+    updates.push("status = 'tracking'");
+    if (entry_price) { updates.push('entry_price = ?'); params.push(entry_price); }
+    if (tp) { updates.push('tp = ?'); params.push(tp); }
+    if (sl) { updates.push('sl = ?'); params.push(sl); }
+    if (leverage) { updates.push('leverage = ?'); params.push(leverage); }
+
+    params.push(id);
+    db.prepare(`UPDATE daytrade_signals SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    db.close();
+
+    const dir = req.body.signal || '?';
+    const asset = req.body.asset || '?';
+    sendTelegram([
+        `📍 *Entrada confirmada: ${dir} ${asset}*`,
+        '',
+        `*Entrada:* $${fmtP(entry_price)}`,
+        `*Take Profit:* $${fmtP(tp)}`,
+        `*Stop Loss:* $${fmtP(sl)}`,
+        `*Leverage:* x${leverage}`,
+        margin ? `*Margen:* $${margin}` : '',
+        '',
+        'Te aviso cuando toque TP o SL.',
+    ].filter(Boolean).join('\n'));
+
+    res.json({ ok: true });
+});
+
+// GET /api/daytrader/tracking — Get active trades being tracked
+router.get('/tracking', (req, res) => {
+    const dt = req.query.device_token;
+    if (!dt) return res.status(400).json({ error: 'device_token required' });
+
+    const db = getDb();
+    const trades = db.prepare("SELECT * FROM daytrade_signals WHERE device_token = ? AND status = 'tracking' ORDER BY created_at DESC").all(dt);
+    db.close();
+    res.json({ ok: true, trades });
+});
+
+// POST /api/daytrader/check-tracking — Check if any tracked trade hit TP/SL
+router.post('/check-tracking', async (req, res) => {
+    const { device_token } = req.body;
+    if (!device_token) return res.status(400).json({ error: 'device_token required' });
+
+    const db = getDb();
+    const trades = db.prepare("SELECT * FROM daytrade_signals WHERE device_token = ? AND status = 'tracking'").all(device_token);
+
+    const alerts = [];
+    const { fetchAllPrices } = require('../services/binance');
+    let prices;
+    try { prices = await fetchAllPrices(); } catch (_) { db.close(); return res.json({ ok: true, alerts: [] }); }
+
+    for (const t of trades) {
+        const pair = t.asset + 'USDT';
+        const price = prices[pair];
+        if (!price) continue;
+
+        const isLong = t.signal === 'LONG';
+        const pnlPct = isLong
+            ? ((price - t.entry_price) / t.entry_price * t.leverage * 100)
+            : ((t.entry_price - price) / t.entry_price * t.leverage * 100);
+
+        let alert = null;
+
+        if (isLong && price >= t.tp) {
+            alert = { id: t.id, type: 'tp', asset: t.asset, signal: t.signal, price, pnlPct, message: `TP alcanzado: ${t.asset} $${fmtP(price)}` };
+        } else if (isLong && price <= t.sl) {
+            alert = { id: t.id, type: 'sl', asset: t.asset, signal: t.signal, price, pnlPct, message: `SL tocado: ${t.asset} $${fmtP(price)}` };
+        } else if (!isLong && price <= t.tp) {
+            alert = { id: t.id, type: 'tp', asset: t.asset, signal: t.signal, price, pnlPct, message: `TP alcanzado: ${t.asset} $${fmtP(price)}` };
+        } else if (!isLong && price >= t.sl) {
+            alert = { id: t.id, type: 'sl', asset: t.asset, signal: t.signal, price, pnlPct, message: `SL tocado: ${t.asset} $${fmtP(price)}` };
+        } else {
+            // Warn at 70% of way to TP or SL
+            const distToTp = Math.abs(price - t.tp);
+            const distToSl = Math.abs(price - t.sl);
+            const totalRange = Math.abs(t.tp - t.sl);
+            if (totalRange > 0) {
+                if (distToTp / totalRange < 0.3) {
+                    alert = { id: t.id, type: 'near_tp', asset: t.asset, signal: t.signal, price, pnlPct, message: `Cerca de TP: ${t.asset} $${fmtP(price)} (${pnlPct.toFixed(1)}%)` };
+                } else if (distToSl / totalRange < 0.3) {
+                    alert = { id: t.id, type: 'near_sl', asset: t.asset, signal: t.signal, price, pnlPct, message: `Cerca de SL: ${t.asset} $${fmtP(price)} (${pnlPct.toFixed(1)}%)` };
+                }
+            }
+        }
+
+        // Check expired
+        if (!alert && t.exit_by) {
+            const exitTime = new Date(t.exit_by).getTime();
+            const remaining = exitTime - Date.now();
+            if (remaining < 0) {
+                alert = { id: t.id, type: 'expired', asset: t.asset, signal: t.signal, price, pnlPct, message: `Tiempo expirado: ${t.asset} — cerrar manualmente (${pnlPct.toFixed(1)}%)` };
+            } else if (remaining < 30 * 60 * 1000) {
+                alert = { id: t.id, type: 'expiring', asset: t.asset, signal: t.signal, price, pnlPct, message: `Quedan ${Math.round(remaining / 60000)} min: ${t.asset} (${pnlPct.toFixed(1)}%)` };
+            }
+        }
+
+        if (alert) {
+            alert.entry = t.entry_price;
+            alert.tp = t.tp;
+            alert.sl = t.sl;
+            alert.leverage = t.leverage;
+            alerts.push(alert);
+        }
+    }
+
+    db.close();
+    res.json({ ok: true, alerts });
 });
 
 // GET /api/daytrader/history?device_token=xxx&limit=30
