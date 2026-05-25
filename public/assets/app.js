@@ -1993,6 +1993,81 @@ function renderDayTradeMulti(trades) {
     el.innerHTML = html;
     loadDtHistory();
     loadOpenTrades();
+    renderDtDebug(sorted);
+}
+
+function renderDtDebug(trades) {
+    const el = document.getElementById('dtDebug');
+    if (!el || !trades?.length) return;
+
+    let debugData = {};
+    for (const t of trades) {
+        const a = t.asset || t.pair?.replace('USDT','') || '?';
+        const d = {
+            asset: a,
+            price: t.price,
+            signal: t.signal,
+            score: t.score,
+            confidence: t.confidence,
+            engine: t.engine,
+            sma20: t.sma20, sma40: t.sma40, sma200: t.sma200,
+            distSma20: t.distSma20,
+        };
+        if (t.tp) { d.tp = t.tp; d.sl = t.sl; d.rr = t.rr; d.leverage = t.leverage; }
+        if (t.analysis) {
+            for (const [tf, data] of Object.entries(t.analysis)) {
+                if (!data) continue;
+                d[tf] = {
+                    bias: data.bias, momentum: data.momentum,
+                    sma20: data.sma20, slope: data.slope, distPct: data.distPct,
+                    rsi: data.rsi, macd_hist: data.macd_hist,
+                    adx: data.adx, plus_di: data.plus_di, minus_di: data.minus_di,
+                    bb_position: data.bb_position, stoch_k: data.stoch_k,
+                    ema9: data.ema9, ema21: data.ema21, atr: data.atr,
+                };
+            }
+        }
+        if (t.zones) {
+            d.resistencias = (t.zones.resistances || []).map(r => ({
+                precio: r.price, dist: r.distPct + '%',
+                fuerza: r.strength, toques: r.touches,
+                tfs: r.timeframes, credible: r.credible,
+                confluencia: r.confluence, flip: r.has_flip,
+            }));
+            d.soportes = (t.zones.supports || []).map(s => ({
+                precio: s.price, dist: s.distPct + '%',
+                fuerza: s.strength, toques: s.touches,
+                tfs: s.timeframes, credible: s.credible,
+                confluencia: s.confluence, flip: s.has_flip,
+            }));
+        }
+        if (t.reasons) d.razones = t.reasons;
+        if (t.indicators) d.indicadores = t.indicators;
+        debugData[a] = d;
+    }
+
+    const json = JSON.stringify(debugData, null, 2);
+
+    el.innerHTML = `<details class="dt-debug">
+        <summary class="dt-debug__toggle">Debug — Análisis completo</summary>
+        <div class="dt-debug__content">
+            <button class="dt-debug__copy" onclick="copyDebug()">Copiar</button>
+            <pre class="dt-debug__pre">${escapeHtml(json)}</pre>
+        </div>
+    </details>`;
+}
+
+function escapeHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function copyDebug() {
+    const pre = document.querySelector('.dt-debug__pre');
+    if (!pre) return;
+    navigator.clipboard.writeText(pre.textContent).then(() => {
+        const btn = document.querySelector('.dt-debug__copy');
+        if (btn) { btn.textContent = 'Copiado'; setTimeout(() => btn.textContent = 'Copiar', 2000); }
+    });
 }
 
 async function loadDtHistory() {
