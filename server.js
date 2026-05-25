@@ -30,6 +30,7 @@ app.use('/api/simulator', require('./src/routes/simulator'));
 app.use('/api/admin', require('./src/routes/admin'));
 app.use('/api/sync', require('./src/routes/sync'));
 app.use('/api/rules', require('./src/routes/rules'));
+app.use('/api/notify', require('./src/routes/notify'));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 app.get('/api/version', (req, res) => {
@@ -52,4 +53,20 @@ app.listen(PORT, '0.0.0.0', () => {
 
     const { startPeriodicSync } = require('./src/services/sync');
     startPeriodicSync(3600000); // sync every hour
+
+    const { startCron, setStrategyLoader } = require('./src/services/notify');
+    const { getDb } = require('./db/init');
+    setStrategyLoader(() => {
+        const db = getDb();
+        const strat = db.prepare("SELECT * FROM executed_strategies WHERE status = 'active' ORDER BY created_at DESC LIMIT 1").get();
+        if (!strat) { db.close(); return null; }
+        const steps = db.prepare('SELECT * FROM executed_steps WHERE strategy_id = ? ORDER BY step_num').all(strat.id);
+        db.close();
+        return {
+            id: strat.id, market_phase: strat.market_phase, main_asset: strat.main_asset,
+            amount: strat.amount,
+            steps: steps.map(s => ({ ...s, done: !!s.done, entry_asset: strat.main_asset })),
+        };
+    });
+    startCron(15 * 60 * 1000); // check rules every 15 min
 });

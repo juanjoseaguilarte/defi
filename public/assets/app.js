@@ -1185,6 +1185,7 @@ async function initTracker() {
     }
     if (trackerCheckInterval) clearInterval(trackerCheckInterval);
     trackerCheckInterval = setInterval(checkTrackerAlerts, 30000);
+    loadRulesPanel();
 }
 
 async function saveAndTrackStrategy() {
@@ -1282,6 +1283,179 @@ async function loadHistoryStrategy(id) {
 document.getElementById('strategyAmount').addEventListener('keydown', e => {
     if (e.key === 'Enter') loadStrategy();
 });
+
+// ═══════════════════════════════════════════════════════════════
+// NOTIFICATIONS — Push + Telegram setup
+// ═══════════════════════════════════════════════════════════════
+
+async function subscribePush() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
+    try {
+        const vapidResp = await fetch(`${APP_BASE}/api/notify/vapid`);
+        const vapidData = await vapidResp.json();
+        if (!vapidData.configured) return false;
+
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') return false;
+
+        const reg = await navigator.serviceWorker.ready;
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+            const key = Uint8Array.from(atob(vapidData.publicKey.replace(/-/g,'+').replace(/_/g,'/')), c => c.charCodeAt(0));
+            sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+        }
+
+        await fetch(`${APP_BASE}/api/notify/push/subscribe`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_token: getDeviceToken(), subscription: sub.toJSON() }),
+        });
+        return true;
+    } catch (e) {
+        console.error('[Push] Subscribe error:', e);
+        return false;
+    }
+}
+
+async function checkNotifyStatus() {
+    try {
+        const resp = await fetch(`${APP_BASE}/api/notify/status`);
+        return await resp.json();
+    } catch (_) { return null; }
+}
+
+async function testTelegram() {
+    const btn = document.getElementById('testTelegramBtn');
+    if (btn) { btn.textContent = 'Enviando...'; btn.disabled = true; }
+    try {
+        const resp = await fetch(`${APP_BASE}/api/notify/telegram/test`, { method: 'POST' });
+        const data = await resp.json();
+        if (btn) { btn.textContent = data.ok ? '✓ Enviado' : '✗ Error'; }
+    } catch (_) {
+        if (btn) btn.textContent = '✗ Error';
+    }
+    setTimeout(() => { if (btn) { btn.textContent = 'Test Telegram'; btn.disabled = false; }}, 3000);
+}
+
+async function enablePushNotifs() {
+    const btn = document.getElementById('enablePushBtn');
+    if (btn) { btn.textContent = 'Activando...'; btn.disabled = true; }
+    const ok = await subscribePush();
+    if (btn) {
+        btn.textContent = ok ? '✓ Push activo' : '✗ No permitido';
+        btn.style.background = ok ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)';
+        btn.style.color = ok ? 'var(--bull)' : 'var(--bear)';
+    }
+}
+
+async function forceCheckRules() {
+    const btn = document.getElementById('forceCheckBtn');
+    if (btn) { btn.textContent = 'Checkeando...'; btn.disabled = true; }
+    try {
+        const resp = await fetch(`${APP_BASE}/api/notify/check`, { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok && data.result?.alerts) {
+            renderLiveAlerts(data.result.alerts);
+        }
+    } catch (_) {}
+    setTimeout(() => { if (btn) { btn.textContent = 'Checkear ahora'; btn.disabled = false; }}, 2000);
+}
+
+function renderLiveAlerts(alerts) {
+    const el = document.getElementById('liveAlerts');
+    if (!el) return;
+    if (!alerts.length) {
+        el.innerHTML = '<div class="live-alerts__empty">Sin alertas activas</div>';
+        return;
+    }
+
+    const icons = { critical: '🚨', action: '⚡', warning: '⚠️', info: 'ℹ️' };
+    const colors = { critical: 'var(--bear)', action: 'var(--accent)', warning: 'var(--dist)', info: 'var(--text-3)' };
+
+    el.innerHTML = alerts.map(a => {
+        const icon = icons[a.type] || '📋';
+        const color = colors[a.type] || 'var(--text-2)';
+        let actionsHtml = '';
+        if (a.actions?.length) {
+            actionsHtml = '<div class="live-alert__actions">' + a.actions.map(ac => `<div class="live-alert__action-item">→ ${ac}</div>`).join('') + '</div>';
+        }
+        return `<div class="live-alert" style="border-left: 3px solid ${color}">
+            <div class="live-alert__header">
+                <span class="live-alert__icon">${icon}</span>
+                <span class="live-alert__msg">${a.message}</span>
+            </div>
+            ${actionsHtml}
+        </div>`;
+    }).join('');
+}
+
+async function loadRulesPanel() {
+    const el = document.getElementById('rulesPanel');
+    if (!el) return;
+
+    const status = await checkNotifyStatus();
+    const tgOk = status?.telegram?.configured;
+    const pushOk = status?.push?.configured;
+    const cronOk = status?.cron?.running;
+
+    let html = '<div class="rules-panel">';
+
+    // Status badges
+    html += '<div class="rules-status">';
+    html += `<span class="rules-badge ${cronOk ? 'rules-badge--on' : 'rules-badge--off'}">Cron ${cronOk ? 'ON' : 'OFF'}</span>`;
+    html += `<span class="rules-badge ${tgOk ? 'rules-badge--on' : 'rules-badge--off'}">Telegram ${tgOk ? '✓' : '✗'}</span>`;
+    html += `<span class="rules-badge ${pushOk ? 'rules-badge--on' : 'rules-badge--off'}">Push ${pushOk ? '✓' : '✗'}</span>`;
+    html += '</div>';
+
+    // Action buttons
+    html += '<div class="rules-actions">';
+    html += '<button class="rules-btn" id="enablePushBtn" onclick="enablePushNotifs()">Activar Push</button>';
+    html += '<button class="rules-btn" id="testTelegramBtn" onclick="testTelegram()">Test Telegram</button>';
+    html += '<button class="rules-btn rules-btn--accent" id="forceCheckBtn" onclick="forceCheckRules()">Checkear ahora</button>';
+    html += '</div>';
+
+    // Live alerts container
+    html += '<div id="liveAlerts" class="live-alerts"><div class="live-alerts__empty">Pulsa "Checkear ahora" para ver alertas</div></div>';
+
+    // Rules reference
+    html += '<details class="rules-reference"><summary class="rules-reference__title">Reglas de entrada/salida</summary>';
+    html += '<div class="rules-reference__content">';
+
+    try {
+        const resp = await fetch(`${APP_BASE}/api/rules`);
+        const rules = await resp.json();
+
+        html += '<div class="rules-section"><div class="rules-section__title">Reglas de Entrada</div>';
+        for (const [key, rule] of Object.entries(rules.entry_rules)) {
+            const phaseColors = { bull: 'var(--bull)', bear: 'var(--bear)', accumulation: 'var(--accent)', distribution: 'var(--dist)' };
+            html += `<div class="rule-card" style="border-left: 3px solid ${phaseColors[key] || 'var(--text-3)'}">`;
+            html += `<div class="rule-card__name">${rule.name}</div>`;
+            html += '<div class="rule-card__conditions">';
+            for (const c of rule.conditions) html += `<div class="rule-card__cond">✓ ${c}</div>`;
+            html += '</div>';
+            html += '<div class="rule-card__actions">';
+            for (const a of rule.actions) html += `<div class="rule-card__act">→ ${a.desc}</div>`;
+            html += '</div></div>';
+        }
+        html += '</div>';
+
+        html += '<div class="rules-section"><div class="rules-section__title">Reglas de Salida</div>';
+        for (const [, rule] of Object.entries(rules.exit_rules)) {
+            const prioColors = { critical: 'var(--bear)', action: 'var(--accent)', warning: 'var(--dist)' };
+            html += `<div class="rule-card" style="border-left: 3px solid ${prioColors[rule.priority] || 'var(--text-3)'}">`;
+            html += `<div class="rule-card__name">${rule.name}</div>`;
+            html += `<div class="rule-card__trigger">Trigger: ${rule.trigger}</div>`;
+            html += '<div class="rule-card__actions">';
+            for (const a of rule.actions) html += `<div class="rule-card__act">→ ${a}</div>`;
+            html += '</div></div>';
+        }
+        html += '</div>';
+    } catch (_) {
+        html += '<div>Error cargando reglas</div>';
+    }
+
+    html += '</div></details></div>';
+    el.innerHTML = html;
+}
 
 // ═══════════════════════════════════════════════════════════════
 // AUTO-UPDATE — Check for new version every 60s
