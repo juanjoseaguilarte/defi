@@ -29,6 +29,7 @@ app.use('/api/tracker', require('./src/routes/tracker'));
 app.use('/api/simulator', require('./src/routes/simulator'));
 app.use('/api/admin', require('./src/routes/admin'));
 app.use('/api/sync', require('./src/routes/sync'));
+app.use('/api/rules', require('./src/routes/rules'));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 app.get('/api/version', (req, res) => {
