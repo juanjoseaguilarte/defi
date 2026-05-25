@@ -1354,6 +1354,18 @@ function renderSimResults(data) {
                 <span style="font-weight:700">${data.phaseChanges}</span>
             </div>
             <div class="portfolio-alloc">
+                <span class="portfolio-alloc__name">LP Take Profit (salida arriba)</span>
+                <span style="font-weight:700;color:var(--bull)">${data.lpExitTop || 0}</span>
+            </div>
+            <div class="portfolio-alloc">
+                <span class="portfolio-alloc__name">LP Exit Bottom</span>
+                <span style="font-weight:700;color:var(--bear)">${data.lpExitBottom || 0}</span>
+            </div>
+            <div class="portfolio-alloc">
+                <span class="portfolio-alloc__name">LP Auto-USDC</span>
+                <span style="font-weight:700;color:var(--accent2)">${data.lpAutoUsdc || 0}</span>
+            </div>
+            <div class="portfolio-alloc">
                 <span class="portfolio-alloc__name">Liquidaciones</span>
                 <span style="font-weight:700;color:${data.liquidations > 0 ? 'var(--bear)' : 'var(--bull)'}">${data.liquidations}</span>
             </div>
@@ -1374,7 +1386,7 @@ function renderSimResults(data) {
         let logHtml = '<div class="sim-log">';
         logHtml += '<div class="sim-log__title">Log de Simulación</div>';
         for (const entry of data.log) {
-            const typeColors = { phase_change: 'var(--accent2)', open: 'var(--bull)', close: 'var(--bear)', liquidation: 'var(--bear)', lp_rebalance: 'var(--dist)', end: 'var(--text-2)' };
+            const typeColors = { phase_change: 'var(--accent2)', open: 'var(--bull)', close: 'var(--bear)', liquidation: 'var(--bear)', lp_rebalance: 'var(--dist)', lp_exit_top: 'var(--bull)', lp_exit_bottom: 'var(--bear)', lp_auto_usdc: 'var(--accent2)', lp_remount: 'var(--bull)', phase_adjust: 'var(--accent2)', adjust_close: 'var(--text-2)', end: 'var(--text-2)', cooldown: 'var(--text-3)' };
             const color = typeColors[entry.type] || 'var(--text-3)';
             logHtml += `<div class="sim-log__entry">
                 <span class="sim-log__date">${entry.date}</span>
