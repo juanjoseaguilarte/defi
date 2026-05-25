@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { pySignals } = require('../services/pybridge');
 const { getSignals } = require('../services/signals');
 
 let cachedSignals = null;
@@ -12,7 +13,15 @@ router.get('/', async (req, res) => {
             return res.json(cachedSignals);
         }
 
-        const data = await getSignals();
+        let data;
+        try {
+            data = await pySignals();
+        } catch (pyErr) {
+            console.error('[Signals] Python failed, JS fallback:', pyErr.message);
+            data = await getSignals();
+            data.engine = 'js-fallback';
+        }
+
         cachedSignals = data;
         cacheTime = Date.now();
         res.json(data);
