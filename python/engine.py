@@ -456,7 +456,16 @@ def run_daytrader(asset):
     elif score <= -7: d,conf = 'SHORT','alta'
     elif score <= -4: d,conf = 'SHORT','media'
 
-    base = {'pair':pair,'price':round(price,2),'calculated_at':datetime.now(timezone.utc).isoformat(),'engine':'python'}
+    # SMA200 from 1H
+    s200 = sma(df1h['close'], 200)
+    sma200_val = round(float(s200.dropna().iloc[-1]), 2) if s200.dropna().shape[0] else None
+
+    base = {
+        'pair': pair, 'price': round(price, 2), 'asset': asset.upper(),
+        'calculated_at': datetime.now(timezone.utc).isoformat(), 'engine': 'python',
+        'sma20': tf1h['sma20'], 'sma40': tf1h['sma40'], 'sma200': sma200_val,
+        'distSma20': tf1h['distPct'],
+    }
 
     if not d:
         lean = 'LONG' if score>0 else 'SHORT' if score<0 else 'ninguna'

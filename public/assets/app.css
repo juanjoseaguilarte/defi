@@ -1214,6 +1214,14 @@ input, select { font-family: var(--font); }
     font-size: 0.6rem; color: var(--text-3); margin-top: 6px;
     font-family: monospace; letter-spacing: 0.3px;
 }
+.dt-sma-bar {
+    margin: 8px 0; padding: 8px 10px; background: rgba(0,0,0,0.2); border-radius: 8px;
+}
+.dt-sma-row {
+    display: flex; justify-content: space-between; font-size: 0.65rem; color: var(--text-2);
+    padding: 2px 0;
+}
+.dt-sma-row span:first-child { color: var(--text-3); font-weight: 600; min-width: 60px; }
 .dt-signal__rr { font-size: 0.7rem; color: var(--text-3); margin-top: 6px; }
 
 .dt-levels {

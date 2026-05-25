@@ -2362,6 +2362,11 @@ function renderSingleTrade(d) {
             <div class="dt-signal__conf">Confianza: <span style="color:${confColors[d.confidence]}">${d.confidence.toUpperCase()}</span> (score ${d.score}) <span class="dt-engine-badge dt-engine-badge--${d.engine === 'python' ? 'py' : 'js'}">${d.engine === 'python' ? 'Python' : 'JS'}</span></div>
             ${d.indicators ? `<div class="dt-indicators">RSI ${d.indicators['1h_rsi']?.toFixed(0) || '—'} | MACD ${d.indicators['1h_macd'] > 0 ? '+' : ''}${d.indicators['1h_macd']?.toFixed(1) || '—'} | ADX ${d.indicators['1h_adx']?.toFixed(0) || '—'} | BB ${d.indicators['1h_bb_pos']?.toFixed(0) || '—'}% | ATR ${d.indicators['1h_atr_pct']?.toFixed(2) || '—'}%</div>` : ''}
             <div class="dt-signal__price">Entrada: <b>$${fmtP(d.entry)}</b></div>
+            ${d.sma20 ? `<div class="dt-sma-bar">
+                <div class="dt-sma-row"><span>SMA 20</span><span>$${fmtP(d.sma20)}</span><span style="color:${(d.distSma20||0) >= 0 ? 'var(--bull)' : 'var(--bear)'}">${(d.distSma20||0) > 0 ? '+' : ''}${(d.distSma20||0).toFixed(2)}%</span></div>
+                <div class="dt-sma-row"><span>SMA 40</span><span>$${fmtP(d.sma40)}</span></div>
+                ${d.sma200 ? `<div class="dt-sma-row"><span>SMA 200</span><span>$${fmtP(d.sma200)}</span></div>` : ''}
+            </div>` : ''}
             <div class="dt-levels">
                 <div class="dt-level dt-level--tp">
                     <span class="dt-level__label">Take Profit</span>
@@ -2411,10 +2416,16 @@ function renderSingleTrade(d) {
             <div class="dt-signal__reason">${d.error || 'Error desconocido'}</div>
         </div>`;
     } else {
+        const distColor = (d.distSma20 || 0) >= 0 ? 'var(--bull)' : 'var(--bear)';
         html += `<div class="dt-signal dt-signal--no">
             <div class="dt-signal__header-no">${d.asset || '?'} <span style="font-weight:400;font-size:0.7rem;color:var(--text-3)">$${fmtP(d.price)}</span> <span class="dt-engine-badge dt-engine-badge--${d.engine === 'python' ? 'py' : 'js'}">${d.engine === 'python' ? 'Python' : d.engine || 'JS'}</span></div>
             <div class="dt-signal__dir" style="color:var(--text-3);font-size:1rem">NO OPERAR</div>
             <div class="dt-signal__reason">${d.reason}</div>
+            ${d.sma20 ? `<div class="dt-sma-bar">
+                <div class="dt-sma-row"><span>SMA 20</span><span>$${fmtP(d.sma20)}</span><span style="color:${distColor}">${(d.distSma20||0) > 0 ? '+' : ''}${(d.distSma20||0).toFixed(2)}%</span></div>
+                <div class="dt-sma-row"><span>SMA 40</span><span>$${fmtP(d.sma40)}</span></div>
+                ${d.sma200 ? `<div class="dt-sma-row"><span>SMA 200</span><span>$${fmtP(d.sma200)}</span></div>` : ''}
+            </div>` : ''}
             ${d.rr ? `<div class="dt-signal__rr">R:R: ${d.rr.toFixed(2)}</div>` : ''}
         </div>`;
     }
