@@ -33,7 +33,11 @@ app.use('/api/rules', require('./src/routes/rules'));
 app.use('/api/notify', require('./src/routes/notify'));
 app.use('/api/daytrader', require('./src/routes/daytrader'));
 
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/health', async (req, res) => {
+    const { pyHealthCheck } = require('./src/services/pybridge');
+    const py = await pyHealthCheck();
+    res.json({ status: 'ok', python: py });
+});
 app.get('/api/version', (req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json({ version: APP_VERSION, build: BUILD_ID });
