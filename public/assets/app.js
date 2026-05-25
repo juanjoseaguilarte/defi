@@ -1285,35 +1285,55 @@ document.getElementById('strategyAmount').addEventListener('keydown', e => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// NOTIFICATIONS — Push + Telegram setup
+// NOTIFICATIONS — Browser Notifications + Telegram
 // ═══════════════════════════════════════════════════════════════
 
-async function subscribePush() {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
+let notifPermission = Notification?.permission || 'default';
+let notifCheckInterval = null;
+const notifSeen = new Set();
+
+async function requestNotifPermission() {
+    if (!('Notification' in window)) return 'denied';
+    notifPermission = await Notification.requestPermission();
+    return notifPermission;
+}
+
+function showBrowserNotif(alert) {
+    if (notifPermission !== 'granted') return;
+    const icons = { critical: '🚨', action: '⚡', warning: '⚠️' };
+    const icon = icons[alert.type] || '📋';
+    const n = new Notification(`${icon} DeFi Alert`, {
+        body: alert.message,
+        tag: (alert.category || '') + '-' + (alert.asset || ''),
+        renotify: alert.type === 'critical',
+        silent: alert.type !== 'critical',
+    });
+    n.onclick = () => { window.focus(); n.close(); };
+}
+
+async function pollAlerts() {
     try {
-        const vapidResp = await fetch(`${APP_BASE}/api/notify/vapid`);
-        const vapidData = await vapidResp.json();
-        if (!vapidData.configured) return false;
+        const resp = await fetch(`${APP_BASE}/api/rules/check?device=${getDeviceToken()}`);
+        const data = await resp.json();
+        if (!data.alerts) return;
 
-        const permission = await Notification.requestPermission();
-        if (permission !== 'granted') return false;
-
-        const reg = await navigator.serviceWorker.ready;
-        let sub = await reg.pushManager.getSubscription();
-        if (!sub) {
-            const key = Uint8Array.from(atob(vapidData.publicKey.replace(/-/g,'+').replace(/_/g,'/')), c => c.charCodeAt(0));
-            sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+        const actionable = data.alerts.filter(a => a.type !== 'info');
+        for (const a of actionable) {
+            const key = `${a.category}:${a.asset}:${a.type}`;
+            if (notifSeen.has(key)) continue;
+            notifSeen.add(key);
+            showBrowserNotif(a);
+            setTimeout(() => notifSeen.delete(key), a.type === 'critical' ? 900000 : 3600000);
         }
 
-        await fetch(`${APP_BASE}/api/notify/push/subscribe`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ device_token: getDeviceToken(), subscription: sub.toJSON() }),
-        });
-        return true;
-    } catch (e) {
-        console.error('[Push] Subscribe error:', e);
-        return false;
-    }
+        renderLiveAlerts(data.alerts);
+    } catch (_) {}
+}
+
+function startNotifPolling() {
+    if (notifCheckInterval) clearInterval(notifCheckInterval);
+    notifCheckInterval = setInterval(pollAlerts, 60000);
+    pollAlerts();
 }
 
 async function checkNotifyStatus() {
@@ -1385,12 +1405,18 @@ async function detectTelegramChat() {
     }
 }
 
-async function enablePushNotifs() {
-    const btn = document.getElementById('enablePushBtn');
+async function enableBrowserNotifs() {
+    const btn = document.getElementById('enableNotifBtn');
     if (btn) { btn.textContent = 'Activando...'; btn.disabled = true; }
-    const ok = await subscribePush();
+    const perm = await requestNotifPermission();
+    const ok = perm === 'granted';
+    if (ok) {
+        localStorage.setItem('defi_notif_enabled', '1');
+        startNotifPolling();
+        showBrowserNotif({ type: 'info', message: 'Notificaciones activadas. Recibirás alertas aquí.', category: 'test', asset: 'SYS' });
+    }
     if (btn) {
-        btn.textContent = ok ? '✓ Push activo' : '✗ No permitido';
+        btn.textContent = ok ? '✓ Notificaciones ON' : '✗ Bloqueado por el navegador';
         btn.style.background = ok ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)';
         btn.style.color = ok ? 'var(--bull)' : 'var(--bear)';
     }
@@ -1400,10 +1426,14 @@ async function forceCheckRules() {
     const btn = document.getElementById('forceCheckBtn');
     if (btn) { btn.textContent = 'Checkeando...'; btn.disabled = true; }
     try {
-        const resp = await fetch(`${APP_BASE}/api/notify/check`, { method: 'POST' });
+        const resp = await fetch(`${APP_BASE}/api/rules/check?device=${getDeviceToken()}`);
         const data = await resp.json();
-        if (data.ok && data.result?.alerts) {
-            renderLiveAlerts(data.result.alerts);
+        if (data.alerts) {
+            renderLiveAlerts(data.alerts);
+            const actionable = data.alerts.filter(a => a.type !== 'info');
+            if (actionable.length && notifPermission === 'granted') {
+                for (const a of actionable) showBrowserNotif(a);
+            }
         }
     } catch (_) {}
     setTimeout(() => { if (btn) { btn.textContent = 'Checkear ahora'; btn.disabled = false; }}, 2000);
@@ -1443,8 +1473,8 @@ async function loadRulesPanel() {
 
     const status = await checkNotifyStatus();
     const tgOk = status?.telegram?.configured;
-    const pushOk = status?.push?.configured;
     const cronOk = status?.cron?.running;
+    const notifOn = notifPermission === 'granted';
 
     let html = '<div class="rules-panel">';
 
@@ -1452,7 +1482,7 @@ async function loadRulesPanel() {
     html += '<div class="rules-status">';
     html += `<span class="rules-badge ${cronOk ? 'rules-badge--on' : 'rules-badge--off'}">Cron ${cronOk ? 'ON' : 'OFF'}</span>`;
     html += `<span class="rules-badge ${tgOk ? 'rules-badge--on' : 'rules-badge--off'}">Telegram ${tgOk ? '✓' : '✗'}</span>`;
-    html += `<span class="rules-badge ${pushOk ? 'rules-badge--on' : 'rules-badge--off'}">Push ${pushOk ? '✓' : '✗'}</span>`;
+    html += `<span class="rules-badge ${notifOn ? 'rules-badge--on' : 'rules-badge--off'}">Notif ${notifOn ? '✓' : '✗'}</span>`;
     html += '</div>';
 
     // Telegram setup
@@ -1474,7 +1504,7 @@ async function loadRulesPanel() {
 
     // Action buttons
     html += '<div class="rules-actions">';
-    html += '<button class="rules-btn" id="enablePushBtn" onclick="enablePushNotifs()">Activar Push</button>';
+    if (!notifOn) html += '<button class="rules-btn" id="enableNotifBtn" onclick="enableBrowserNotifs()">Activar Notificaciones</button>';
     if (tgOk) html += '<button class="rules-btn" id="testTelegramBtn" onclick="testTelegram()">Test Telegram</button>';
     html += '<button class="rules-btn rules-btn--accent" id="forceCheckBtn" onclick="forceCheckRules()">Checkear ahora</button>';
     html += '</div>';
@@ -1521,6 +1551,8 @@ async function loadRulesPanel() {
 
     html += '</div></details></div>';
     el.innerHTML = html;
+
+    if (notifOn) startNotifPolling();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1723,3 +1755,8 @@ if ('serviceWorker' in navigator) {
 
 checkVersion();
 setInterval(checkVersion, 60000);
+
+// Auto-start notification polling if previously enabled
+if (Notification?.permission === 'granted' && localStorage.getItem('defi_notif_enabled')) {
+    startNotifPolling();
+}

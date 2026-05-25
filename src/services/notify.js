@@ -2,15 +2,19 @@ const { checkRules, saveAlert } = require('./rules');
 const { getDb } = require('../../db/init');
 
 // ═══════════════════════════════════════════════════════════════
-// TELEGRAM — Config from DB
+// TELEGRAM — Config stored in DB
 // ═══════════════════════════════════════════════════════════════
+
+function ensureConfigTable(db) {
+    db.exec(`CREATE TABLE IF NOT EXISTS app_config (
+        key TEXT PRIMARY KEY, value TEXT, updated_at TEXT DEFAULT (datetime('now'))
+    )`);
+}
 
 function getTelegramConfig() {
     try {
         const db = getDb();
-        db.exec(`CREATE TABLE IF NOT EXISTS app_config (
-            key TEXT PRIMARY KEY, value TEXT, updated_at TEXT DEFAULT (datetime('now'))
-        )`);
+        ensureConfigTable(db);
         const row = (k) => db.prepare('SELECT value FROM app_config WHERE key = ?').get(k)?.value || '';
         const cfg = { bot_token: row('telegram_bot_token'), chat_id: row('telegram_chat_id') };
         db.close();
@@ -20,9 +24,7 @@ function getTelegramConfig() {
 
 function setTelegramConfig(botToken, chatId) {
     const db = getDb();
-    db.exec(`CREATE TABLE IF NOT EXISTS app_config (
-        key TEXT PRIMARY KEY, value TEXT, updated_at TEXT DEFAULT (datetime('now'))
-    )`);
+    ensureConfigTable(db);
     const upsert = db.prepare("INSERT INTO app_config (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')");
     if (botToken) upsert.run('telegram_bot_token', botToken);
     if (chatId) upsert.run('telegram_chat_id', chatId);
@@ -80,61 +82,6 @@ function formatTelegramAlert(alert) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// PUSH SUBSCRIPTIONS (Web Push via VAPID)
-// ═══════════════════════════════════════════════════════════════
-
-let webpush;
-try { webpush = require('web-push'); } catch (_) { webpush = null; }
-
-const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || '';
-const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || '';
-const VAPID_EMAIL = process.env.VAPID_EMAIL || 'mailto:defi@example.com';
-
-if (webpush && VAPID_PUBLIC && VAPID_PRIVATE) {
-    webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC, VAPID_PRIVATE);
-}
-
-const pushSubscriptions = new Map();
-
-function addPushSubscription(deviceToken, subscription) {
-    pushSubscriptions.set(deviceToken, subscription);
-}
-
-function removePushSubscription(deviceToken) {
-    pushSubscriptions.delete(deviceToken);
-}
-
-async function sendPush(deviceToken, payload) {
-    if (!webpush || !VAPID_PUBLIC) return false;
-    const sub = pushSubscriptions.get(deviceToken);
-    if (!sub) return false;
-    try {
-        await webpush.sendNotification(sub, JSON.stringify(payload));
-        return true;
-    } catch (e) {
-        if (e.statusCode === 410 || e.statusCode === 404) {
-            pushSubscriptions.delete(deviceToken);
-        }
-        console.error('[Notify] Push error:', e.message);
-        return false;
-    }
-}
-
-function formatPushPayload(alert) {
-    const icons = { critical: '🚨', action: '⚡', warning: '⚠️', info: 'ℹ️' };
-    return {
-        title: `${icons[alert.type] || '📋'} DeFi Alert`,
-        body: alert.message,
-        data: {
-            type: alert.type, category: alert.category, asset: alert.asset,
-            actions: alert.actions, url: '/strategy',
-        },
-        tag: alert.category + '-' + alert.asset,
-        renotify: alert.type === 'critical',
-    };
-}
-
-// ═══════════════════════════════════════════════════════════════
 // DEDUP — Don't spam the same alert
 // ═══════════════════════════════════════════════════════════════
 
@@ -156,7 +103,8 @@ function shouldSend(alert) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// CRON — Periodic rule checker
+// CRON — Periodic rule checker (sends Telegram only)
+// Browser notifications handled client-side via polling
 // ═══════════════════════════════════════════════════════════════
 
 let cronInterval = null;
@@ -179,19 +127,13 @@ async function runCheck() {
         for (const alert of actionable) {
             if (!shouldSend(alert)) continue;
 
-            const sent = { telegram: false, push: false };
-
-            sent.telegram = await sendTelegram(formatTelegramAlert(alert));
-
-            for (const [dt] of pushSubscriptions) {
-                sent.push = await sendPush(dt, formatPushPayload(alert)) || sent.push;
-            }
+            const sent = await sendTelegram(formatTelegramAlert(alert));
 
             if (activeStrategy?.id) {
                 saveAlert(activeStrategy.id, alert.category, alert.message);
             }
 
-            console.log(`[Notify] ${alert.type.toUpperCase()}: ${alert.message} | TG:${sent.telegram} Push:${sent.push}`);
+            console.log(`[Notify] ${alert.type.toUpperCase()}: ${alert.message} | TG:${sent}`);
         }
 
         return result;
@@ -220,17 +162,14 @@ function getNotifyStatus() {
     const cfg = getTelegramConfig();
     return {
         telegram: { configured: !!(cfg.bot_token && cfg.chat_id), bot_token_set: !!cfg.bot_token, chat_id_set: !!cfg.chat_id },
-        push: { configured: !!(webpush && VAPID_PUBLIC), subscriptions: pushSubscriptions.size },
         cron: { running: !!cronInterval },
         dedup: { tracked: sentAlerts.size },
     };
 }
 
 module.exports = {
-    sendTelegram, sendPush, detectChatId,
-    addPushSubscription, removePushSubscription,
+    sendTelegram, detectChatId,
     startCron, stopCron, runCheck,
     setStrategyLoader, getNotifyStatus,
     setTelegramConfig, getTelegramConfig,
-    VAPID_PUBLIC,
 };
