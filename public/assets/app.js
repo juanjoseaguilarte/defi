@@ -2552,8 +2552,13 @@ function renderSingleTrade(d) {
 // TEST PAGE
 // ═══════════════════════════════════════════════════════════════
 
+let testCurrentAsset = 'BTC';
+let testCurrentTf = '1d';
+const TEST_TFS = ['15m','1h','4h','6h','1d','1w'];
+
 async function runTestAnalysis() {
     const asset = document.getElementById('testAsset').value;
+    testCurrentAsset = asset;
     const btn = document.getElementById('testAnalyzeBtn');
     const visual = document.getElementById('testVisual');
     const raw = document.getElementById('testRaw');
@@ -2563,18 +2568,69 @@ async function runTestAnalysis() {
     visual.innerHTML = ''; raw.innerHTML = '';
     loading.style.display = 'flex';
 
+    // Build TF selector
+    renderTfSelector();
+
     try {
-        const resp = await fetch(`${APP_BASE}/api/daytrader?asset=${asset}`);
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const d = await resp.json();
-        renderTestVisual(d, visual);
-        renderTestRaw(d, raw);
+        const [dtResp, chartResp] = await Promise.all([
+            fetch(`${APP_BASE}/api/daytrader?asset=${asset}`),
+            fetch(`${APP_BASE}/api/daytrader/chart?asset=${asset}&tf=${testCurrentTf}`),
+        ]);
+        const dtData = dtResp.ok ? await dtResp.json() : null;
+        const chartData = chartResp.ok ? await chartResp.json() : null;
+
+        if (chartData?.chart) drawCandleChart(chartData);
+        renderTestLegend(chartData || dtData);
+        if (dtData) renderTestVisual(dtData, visual);
+        renderTestRaw(chartData || dtData, raw);
     } catch (e) {
         visual.innerHTML = `<div class="strategy-warnings"><div class="strategy-warnings__item">${e.message}</div></div>`;
     } finally {
         loading.style.display = 'none';
         btn.disabled = false; btn.textContent = 'Analizar';
     }
+}
+
+function renderTfSelector() {
+    const el = document.getElementById('testTfSelector');
+    if (!el) return;
+    el.innerHTML = TEST_TFS.map(tf =>
+        `<button class="test-tf-btn ${tf === testCurrentTf ? 'test-tf-btn--active' : ''}" onclick="changeTestTf('${tf}')">${tf.toUpperCase()}</button>`
+    ).join('');
+}
+
+async function changeTestTf(tf) {
+    testCurrentTf = tf;
+    renderTfSelector();
+    const loading = document.getElementById('testLoading');
+    if (loading) loading.style.display = 'flex';
+
+    try {
+        const resp = await fetch(`${APP_BASE}/api/daytrader/chart?asset=${testCurrentAsset}&tf=${tf}`);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        if (data.chart) drawCandleChart(data);
+        renderTestLegend(data);
+        renderTestRaw(data, document.getElementById('testRaw'));
+    } catch (e) {
+        const el = document.getElementById('testVisual');
+        if (el) el.innerHTML = `<div class="strategy-warnings"><div class="strategy-warnings__item">${e.message}</div></div>`;
+    } finally {
+        if (loading) loading.style.display = 'none';
+    }
+}
+
+function renderTestLegend(d) {
+    const el = document.getElementById('testSmaLegend');
+    if (!el || !d) return;
+    const dc = (d.distSma20||0) >= 0 ? 'var(--bull)' : 'var(--bear)';
+    el.innerHTML = `
+        <span style="color:#06b6d4">SMA 20: $${fmtP(d.sma20)}</span>
+        <span style="color:#eab308">SMA 40: $${fmtP(d.sma40)}</span>
+        ${d.sma200 ? `<span style="color:#a78bfa">SMA 200: $${fmtP(d.sma200)}</span>` : ''}
+        <span style="color:${dc}">Dist: ${(d.distSma20||0) > 0?'+':''}${(d.distSma20||0).toFixed(2)}%</span>
+        ${d.phase ? `<span style="color:${d.phase.type === 'bull' ? 'var(--bull)' : d.phase.type === 'bear' ? 'var(--bear)' : 'var(--text-3)'}">${d.phase.phase || ''}</span>` : ''}
+    `;
 }
 
 function renderTestVisual(d, el) {
@@ -2597,17 +2653,6 @@ function renderTestVisual(d, el) {
         { label: 'SMA 40', val: d.sma40, color: '#eab308' },
         { label: 'SMA 20', val: d.sma20, color: '#06b6d4' },
     ].filter(s => s.val);
-
-    // ── Candle chart with SMAs ──
-    if (d.chart?.length) {
-        html += '<div class="test-chart-wrap"><canvas id="testChart" width="800" height="400"></canvas></div>';
-        html += `<div class="test-sma-legend">
-            <span style="color:#06b6d4">SMA 20: $${fmtP(d.sma20)}</span>
-            <span style="color:#eab308">SMA 40: $${fmtP(d.sma40)}</span>
-            ${d.sma200 ? `<span style="color:#a78bfa">SMA 200: $${fmtP(d.sma200)}</span>` : ''}
-            <span style="color:${(d.distSma20||0) >= 0 ? 'var(--bull)' : 'var(--bear)'}">Dist SMA20: ${(d.distSma20||0) > 0 ? '+' : ''}${(d.distSma20||0).toFixed(2)}%</span>
-        </div>`;
-    }
 
     // ── TF Analysis cards ──
     const tfMap = { tf6h: '6H', tf1h: '1H', tf15m: '15M' };
@@ -2691,10 +2736,6 @@ function renderTestVisual(d, el) {
     }
 
     el.innerHTML = html;
-
-    if (d.chart?.length) {
-        setTimeout(() => drawCandleChart(d), 50);
-    }
 }
 
 function drawCandleChart(d) {

@@ -31,6 +31,7 @@ function runPython(args, timeoutMs = 45000) {
 async function pyAnalyst() { return runPython(['analyst'], 60000); }
 async function pySignals() { return runPython(['signals'], 60000); }
 async function pyDaytrader(asset) { return runPython(['daytrader', asset], 30000); }
+async function pyChart(asset, tf) { return runPython(['chart', asset, tf], 30000); }
 
 async function pyHealthCheck() {
     return new Promise((resolve) => {
@@ -45,4 +46,4 @@ async function pyHealthCheck() {
     });
 }
 
-module.exports = { pyAnalyst, pySignals, pyDaytrader, pyHealthCheck };
+module.exports = { pyAnalyst, pySignals, pyDaytrader, pyChart, pyHealthCheck };

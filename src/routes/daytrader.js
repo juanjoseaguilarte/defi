@@ -11,6 +11,21 @@ function fmtP(v) {
     return v.toLocaleString('en-US', { maximumFractionDigits: 4 });
 }
 
+// GET /api/daytrader/chart?asset=BTC&tf=1d
+router.get('/chart', async (req, res) => {
+    const asset = (req.query.asset || 'BTC').toUpperCase();
+    const tf = req.query.tf || '1d';
+    const allowed = ['15m','1h','4h','6h','1d','1w'];
+    if (!allowed.includes(tf)) return res.status(400).json({ error: 'TF: ' + allowed.join(', ') });
+    try {
+        const { pyChart } = require('../services/pybridge');
+        const data = await pyChart(asset, tf);
+        res.json(data);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // GET /api/daytrader?asset=ETH
 router.get('/', async (req, res) => {
     const asset = (req.query.asset || 'ETH').toUpperCase();

@@ -675,6 +675,64 @@ def run_daytrader(asset):
     }
 
 # ═══════════════════════════════════════════════════════════════
+# MODE: CHART — candle data + SMAs + S/R for any timeframe
+# ═══════════════════════════════════════════════════════════════
+
+TF_LIMITS = {'15m': 200, '1h': 250, '4h': 200, '6h': 150, '1d': 120, '1w': 60}
+
+def run_chart(asset, tf):
+    pair = asset.upper() + 'USDT'
+    limit = TF_LIMITS.get(tf, 120)
+    df = fetch_candles(pair, tf, limit)
+    if df is None or len(df) < 30:
+        raise Exception(f'No data for {pair} {tf}')
+
+    prices_all = fetch_prices()
+    price = prices_all.get(pair, float(df['close'].iloc[-1]))
+
+    s20 = sma(df['close'], 20)
+    s40 = sma(df['close'], 40)
+    s200 = sma(df['close'], 200) if len(df) > 200 else pd.Series([None]*len(df))
+
+    phase = detect_phase(df, price)
+    tf_data = analyze_tf(df)
+
+    zones = power4_sr(df, price=price)
+
+    # Build candle array
+    candles = []
+    for i in range(len(df)):
+        candles.append({
+            'ts': str(df['ts'].iloc[i])[:16],
+            'o': round(df['open'].iloc[i], 2),
+            'h': round(df['high'].iloc[i], 2),
+            'l': round(df['low'].iloc[i], 2),
+            'c': round(df['close'].iloc[i], 2),
+            'v': round(df['volume'].iloc[i], 0),
+            's20': round(float(s20.iloc[i]), 2) if not pd.isna(s20.iloc[i]) else None,
+            's40': round(float(s40.iloc[i]), 2) if not pd.isna(s40.iloc[i]) else None,
+            's200': round(float(s200.iloc[i]), 2) if i < len(s200) and not pd.isna(s200.iloc[i]) else None,
+        })
+
+    last_s20 = round(float(s20.dropna().iloc[-1]), 2) if s20.dropna().shape[0] else None
+    last_s40 = round(float(s40.dropna().iloc[-1]), 2) if s40.dropna().shape[0] else None
+    last_s200 = round(float(s200.dropna().iloc[-1]), 2) if s200.dropna().shape[0] else None
+    dist = round((price - last_s20) / last_s20 * 100, 2) if last_s20 else 0
+
+    return {
+        'asset': asset.upper(), 'pair': pair, 'tf': tf, 'price': round(price, 2),
+        'sma20': last_s20, 'sma40': last_s40, 'sma200': last_s200,
+        'distSma20': dist,
+        'phase': phase,
+        'indicators': tf_data if tf_data else {},
+        'zones': zones,
+        'chart': candles,
+        'engine': 'python',
+        'calculated_at': datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
 # MAIN
 # ═══════════════════════════════════════════════════════════════
 
@@ -686,6 +744,10 @@ if __name__ == '__main__':
         elif mode == 'daytrader':
             asset = sys.argv[2] if len(sys.argv)>2 else 'ETH'
             print(json.dumps(run_daytrader(asset)))
+        elif mode == 'chart':
+            asset = sys.argv[2] if len(sys.argv)>2 else 'BTC'
+            tf = sys.argv[3] if len(sys.argv)>3 else '1d'
+            print(json.dumps(run_chart(asset, tf)))
         else: print(json.dumps({'error':f'Unknown mode: {mode}'}))
     except Exception as e:
         print(json.dumps({'error': str(e)}))
