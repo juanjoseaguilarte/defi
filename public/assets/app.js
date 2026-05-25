@@ -2359,7 +2359,8 @@ function renderSingleTrade(d) {
         const confColors = { alta: 'var(--bull)', media: 'var(--dist)', baja: 'var(--bear)' };
         html += `<div class="dt-signal" style="border-color: ${dirColor}">
             <div class="dt-signal__dir" style="color:${dirColor}">${d.signal} ${d.asset}</div>
-            <div class="dt-signal__conf">Confianza: <span style="color:${confColors[d.confidence]}">${d.confidence.toUpperCase()}</span> (score ${d.score})</div>
+            <div class="dt-signal__conf">Confianza: <span style="color:${confColors[d.confidence]}">${d.confidence.toUpperCase()}</span> (score ${d.score}) <span class="dt-engine-badge dt-engine-badge--${d.engine === 'python' ? 'py' : 'js'}">${d.engine === 'python' ? 'Python' : 'JS'}</span></div>
+            ${d.indicators ? `<div class="dt-indicators">RSI ${d.indicators['1h_rsi']?.toFixed(0) || '—'} | MACD ${d.indicators['1h_macd'] > 0 ? '+' : ''}${d.indicators['1h_macd']?.toFixed(1) || '—'} | ADX ${d.indicators['1h_adx']?.toFixed(0) || '—'} | BB ${d.indicators['1h_bb_pos']?.toFixed(0) || '—'}% | ATR ${d.indicators['1h_atr_pct']?.toFixed(2) || '—'}%</div>` : ''}
             <div class="dt-signal__price">Entrada: <b>$${fmtP(d.entry)}</b></div>
             <div class="dt-levels">
                 <div class="dt-level dt-level--tp">
@@ -2405,7 +2406,7 @@ function renderSingleTrade(d) {
         </div>`;
     } else {
         html += `<div class="dt-signal dt-signal--no">
-            <div class="dt-signal__header-no">${d.asset || '?'} <span style="font-weight:400;font-size:0.7rem;color:var(--text-3)">$${fmtP(d.price)}</span></div>
+            <div class="dt-signal__header-no">${d.asset || '?'} <span style="font-weight:400;font-size:0.7rem;color:var(--text-3)">$${fmtP(d.price)}</span> <span class="dt-engine-badge dt-engine-badge--${d.engine === 'python' ? 'py' : 'js'}">${d.engine === 'python' ? 'Python' : 'JS'}</span></div>
             <div class="dt-signal__dir" style="color:var(--text-3);font-size:1rem">NO OPERAR</div>
             <div class="dt-signal__reason">${d.reason}</div>
             ${d.rr ? `<div class="dt-signal__rr">R:R: ${d.rr.toFixed(2)}</div>` : ''}

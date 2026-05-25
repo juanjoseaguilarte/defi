@@ -453,6 +453,7 @@ def analyze(asset):
     trade['pair'] = pair
     trade['price'] = round(price, 2)
     trade['calculated_at'] = datetime.now(timezone.utc).isoformat()
+    trade['engine'] = 'python'
 
     return trade
 

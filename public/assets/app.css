@@ -1203,6 +1203,17 @@ input, select { font-family: var(--font); }
 .dt-signal__conf { font-size: 0.72rem; color: var(--text-2); margin-top: 4px; }
 .dt-signal__price { font-size: 0.85rem; color: var(--text-1); margin-top: 8px; }
 .dt-signal__reason { font-size: 0.75rem; color: var(--text-2); margin-top: 8px; line-height: 1.5; }
+
+.dt-engine-badge {
+    font-size: 0.55rem; font-weight: 800; padding: 2px 7px; border-radius: 4px;
+    text-transform: uppercase; letter-spacing: 0.5px; vertical-align: middle; margin-left: 4px;
+}
+.dt-engine-badge--py { background: rgba(59,130,246,0.15); color: #3b82f6; }
+.dt-engine-badge--js { background: rgba(234,179,8,0.12); color: #eab308; }
+.dt-indicators {
+    font-size: 0.6rem; color: var(--text-3); margin-top: 6px;
+    font-family: monospace; letter-spacing: 0.3px;
+}
 .dt-signal__rr { font-size: 0.7rem; color: var(--text-3); margin-top: 6px; }
 
 .dt-levels {
