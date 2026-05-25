@@ -1777,6 +1777,7 @@ let dtWatchCount = 0;
 const DT_WATCH_INTERVAL_MS = 3 * 60 * 1000;
 const DT_WATCH_MAX_HOURS = 6;
 const DT_ALL_ASSETS = ['ETH', 'BTC', 'SOL'];
+let dtOpenSignals = [];
 
 async function analyzeDayTrade() {
     const checks = document.querySelectorAll('.dt-asset-check:checked');
@@ -1828,6 +1829,8 @@ async function toggleDtWatch() {
     if (wb) { wb.textContent = `Vigilando ${dtWatchAssets.join(', ')}...`; wb.classList.add('dt-watch-btn--active'); }
     updateWatchStatus(`Vigilando ${dtWatchAssets.join(', ')}. Chequeo cada 3 min (max ${DT_WATCH_MAX_HOURS}h).`);
 
+    localStorage.setItem('defi_dt_watch', JSON.stringify({ assets: dtWatchAssets, started: Date.now() }));
+
     fetch(`${APP_BASE}/api/daytrader/watch`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ assets: dtWatchAssets, action: 'start' }),
@@ -1867,7 +1870,7 @@ async function dtWatchCheck() {
 
             fetch(`${APP_BASE}/api/daytrader/watch`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ asset: data.asset, action: 'signal', trade: data }),
+                body: JSON.stringify({ asset: data.asset, action: 'signal', trade: data, device_token: getDeviceToken() }),
             }).catch(() => {});
         }
 
@@ -1880,14 +1883,43 @@ async function dtWatchCheck() {
 function stopDtWatch() {
     if (dtWatchInterval) { clearInterval(dtWatchInterval); dtWatchInterval = null; }
     const wb = document.getElementById('dtWatchBtn');
-    if (wb) { wb.textContent = 'Avisarme'; wb.classList.remove('dt-watch-btn--active'); }
+    if (wb) { wb.textContent = 'Avisarme cuando haya señal'; wb.classList.remove('dt-watch-btn--active'); }
     dtWatchAssets = [];
     dtWatchCount = 0;
+    localStorage.removeItem('defi_dt_watch');
 
     fetch(`${APP_BASE}/api/daytrader/watch`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'stop' }),
     }).catch(() => {});
+}
+
+function restoreDtWatch() {
+    const saved = localStorage.getItem('defi_dt_watch');
+    if (!saved) return;
+    try {
+        const { assets, started } = JSON.parse(saved);
+        const elapsed = Date.now() - started;
+        if (elapsed > DT_WATCH_MAX_HOURS * 60 * 60 * 1000) {
+            localStorage.removeItem('defi_dt_watch');
+            return;
+        }
+        dtWatchAssets = assets;
+        dtWatchCount = Math.floor(elapsed / DT_WATCH_INTERVAL_MS);
+        const maxChecks = Math.floor(DT_WATCH_MAX_HOURS * 60 / (DT_WATCH_INTERVAL_MS / 60000));
+
+        const wb = document.getElementById('dtWatchBtn');
+        if (wb) { wb.textContent = `Vigilando ${dtWatchAssets.join(', ')}...`; wb.classList.add('dt-watch-btn--active'); }
+        updateWatchStatus(`Restaurado. Vigilando ${dtWatchAssets.join(', ')} (#${dtWatchCount}).`);
+
+        dtWatchInterval = setInterval(async () => {
+            dtWatchCount++;
+            if (dtWatchCount > maxChecks) { stopDtWatch(); return; }
+            await dtWatchCheck();
+        }, DT_WATCH_INTERVAL_MS);
+
+        dtWatchCheck();
+    } catch (_) { localStorage.removeItem('defi_dt_watch'); }
 }
 
 function updateWatchStatus(msg) {
@@ -1899,7 +1931,7 @@ function renderDayTradeMulti(trades) {
     const el = document.getElementById('dtResult');
     let html = '';
 
-    // Watch button first
+    // Watch button
     const isWatching = !!dtWatchInterval;
     html += `<div class="dt-watch-row">
         <button class="dt-watch-btn ${isWatching ? 'dt-watch-btn--active' : ''}" id="dtWatchBtn" onclick="toggleDtWatch()">
@@ -1908,7 +1940,7 @@ function renderDayTradeMulti(trades) {
         <div class="dt-watch-status" id="dtWatchStatus">${isWatching ? 'Vigilando...' : 'Vigila las monedas seleccionadas. Te avisa por Telegram + notificación.'}</div>
     </div>`;
 
-    // Sort: signals first, then by score
+    // Sort: signals first
     const sorted = [...trades].sort((a, b) => {
         const aSignal = (a.signal === 'LONG' || a.signal === 'SHORT') ? 1 : 0;
         const bSignal = (b.signal === 'LONG' || b.signal === 'SHORT') ? 1 : 0;
@@ -1920,7 +1952,99 @@ function renderDayTradeMulti(trades) {
         html += renderSingleTrade(d);
     }
 
+    // History section
+    html += '<div id="dtHistory"></div>';
+
     el.innerHTML = html;
+    loadDtHistory();
+}
+
+async function loadDtHistory() {
+    const el = document.getElementById('dtHistory');
+    if (!el) return;
+    const dt = getDeviceToken();
+    try {
+        const resp = await fetch(`${APP_BASE}/api/daytrader/history?device_token=${dt}&limit=20`);
+        const data = await resp.json();
+        if (!data.ok || !data.signals?.length) { el.innerHTML = ''; return; }
+
+        dtOpenSignals = data.signals.filter(s => s.status === 'open');
+
+        let html = '<div class="dt-history">';
+        html += '<div class="dt-history__title">Historial de operaciones</div>';
+
+        // Stats
+        const s = data.stats;
+        html += `<div class="dt-history__stats">
+            <span>Total: <b>${s.total}</b></span>
+            <span>Abiertas: <b>${s.open}</b></span>
+            <span style="color:var(--bull)">TP: <b>${s.wins}</b></span>
+            <span style="color:var(--bear)">SL: <b>${s.losses}</b></span>
+            <span>Win rate: <b>${s.winRate}%</b></span>
+        </div>`;
+
+        for (const sig of data.signals) {
+            const isOpen = sig.status === 'open';
+            const dirColor = sig.signal === 'LONG' ? 'var(--bull)' : 'var(--bear)';
+            const resultBadge = sig.result === 'tp' ? '<span class="dt-h-badge dt-h-badge--tp">TP</span>'
+                : sig.result === 'sl' ? '<span class="dt-h-badge dt-h-badge--sl">SL</span>'
+                : sig.result === 'manual' ? '<span class="dt-h-badge dt-h-badge--manual">MANUAL</span>'
+                : sig.result === 'expired' ? '<span class="dt-h-badge dt-h-badge--expired">EXPIRADO</span>'
+                : '';
+            const date = new Date(sig.created_at).toLocaleString('es-ES', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+
+            html += `<div class="dt-h-card ${isOpen ? 'dt-h-card--open' : ''}">
+                <div class="dt-h-card__top">
+                    <span class="dt-h-card__dir" style="color:${dirColor}">${sig.signal} ${sig.asset}</span>
+                    ${isOpen ? '<span class="dt-h-badge dt-h-badge--open">ABIERTA</span>' : resultBadge}
+                </div>
+                <div class="dt-h-card__mid">
+                    <span>$${fmtP(sig.entry_price)}</span>
+                    <span style="color:var(--bull)">TP $${fmtP(sig.tp)}</span>
+                    <span style="color:var(--bear)">SL $${fmtP(sig.sl)}</span>
+                    <span>x${sig.leverage} R:R ${sig.rr}</span>
+                </div>
+                <div class="dt-h-card__bottom">
+                    <span class="dt-h-card__date">${date}</span>
+                    ${sig.pnl_pct ? `<span style="color:${sig.pnl_pct >= 0 ? 'var(--bull)' : 'var(--bear)'}">${sig.pnl_pct >= 0 ? '+' : ''}${sig.pnl_pct.toFixed(1)}%</span>` : ''}
+                    ${isOpen ? `<div class="dt-h-card__close-btns">
+                        <button class="dt-h-close dt-h-close--tp" onclick="closeDtSignal(${sig.id},'tp')">TP</button>
+                        <button class="dt-h-close dt-h-close--sl" onclick="closeDtSignal(${sig.id},'sl')">SL</button>
+                        <button class="dt-h-close" onclick="closeDtSignal(${sig.id},'manual')">Cerrar</button>
+                    </div>` : ''}
+                </div>
+            </div>`;
+        }
+        html += '</div>';
+        el.innerHTML = html;
+    } catch (_) {}
+}
+
+async function closeDtSignal(id, result) {
+    const sig = dtOpenSignals.find(s => s.id === id);
+    let pnl = 0;
+    if (sig) {
+        try {
+            const pair = sig.asset + 'USDT';
+            if (latestPrices[pair]) {
+                const closeP = latestPrices[pair];
+                if (sig.signal === 'LONG') pnl = ((closeP - sig.entry_price) / sig.entry_price * sig.leverage * 100);
+                else pnl = ((sig.entry_price - closeP) / sig.entry_price * sig.leverage * 100);
+
+                await fetch(`${APP_BASE}/api/daytrader/close`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, result, closed_price: closeP, pnl_pct: +pnl.toFixed(2) }),
+                });
+                loadDtHistory();
+                return;
+            }
+        } catch (_) {}
+    }
+    await fetch(`${APP_BASE}/api/daytrader/close`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, result, closed_price: 0, pnl_pct: 0 }),
+    });
+    loadDtHistory();
 }
 
 function renderSingleTrade(d) {
@@ -2044,3 +2168,6 @@ setInterval(checkVersion, 60000);
 if (Notification?.permission === 'granted' && localStorage.getItem('defi_notif_enabled')) {
     startNotifPolling();
 }
+
+// Restore daytrader watch if it was running
+restoreDtWatch();

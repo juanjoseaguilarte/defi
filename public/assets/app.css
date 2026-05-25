@@ -1313,3 +1313,42 @@ input, select { font-family: var(--font); }
 .dt-details__summary::before { content: '▸ '; }
 .dt-details[open] .dt-details__summary::before { content: '▾ '; }
 .dt-details__summary::-webkit-details-marker { display: none; }
+
+/* Daytrader history */
+.dt-history { margin-top: 18px; }
+.dt-history__title { font-size: 0.72rem; font-weight: 800; color: var(--text-2); margin-bottom: 10px; }
+.dt-history__stats {
+    display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.65rem; color: var(--text-3);
+    margin-bottom: 12px; padding: 8px 12px; background: rgba(255,255,255,0.02); border-radius: 8px;
+}
+.dt-h-card {
+    background: rgba(255,255,255,0.02); border-radius: 10px; padding: 10px 12px; margin-bottom: 6px;
+    border-left: 3px solid rgba(255,255,255,0.06);
+}
+.dt-h-card--open { border-left-color: var(--accent); background: rgba(99,102,241,0.04); }
+.dt-h-card__top { display: flex; justify-content: space-between; align-items: center; }
+.dt-h-card__dir { font-size: 0.78rem; font-weight: 800; }
+.dt-h-card__mid {
+    display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.65rem; color: var(--text-2); margin: 4px 0;
+}
+.dt-h-card__bottom { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dt-h-card__date { font-size: 0.6rem; color: var(--text-3); }
+.dt-h-card__close-btns { display: flex; gap: 4px; margin-left: auto; }
+
+.dt-h-badge {
+    font-size: 0.55rem; font-weight: 800; padding: 2px 8px; border-radius: 6px;
+    text-transform: uppercase; letter-spacing: 0.3px;
+}
+.dt-h-badge--open { background: rgba(99,102,241,0.15); color: var(--accent); }
+.dt-h-badge--tp { background: rgba(34,197,94,0.15); color: var(--bull); }
+.dt-h-badge--sl { background: rgba(239,68,68,0.15); color: var(--bear); }
+.dt-h-badge--manual { background: rgba(255,255,255,0.06); color: var(--text-3); }
+.dt-h-badge--expired { background: rgba(234,179,8,0.1); color: var(--dist); }
+
+.dt-h-close {
+    font-size: 0.6rem; font-weight: 700; padding: 3px 10px; border-radius: 6px;
+    background: rgba(255,255,255,0.06); color: var(--text-2); border: none; cursor: pointer;
+}
+.dt-h-close--tp { background: rgba(34,197,94,0.1); color: var(--bull); }
+.dt-h-close--sl { background: rgba(239,68,68,0.1); color: var(--bear); }
+.dt-h-close:hover { opacity: 0.8; }

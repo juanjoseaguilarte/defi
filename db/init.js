@@ -126,6 +126,41 @@ function getDb() {
             value TEXT,
             updated_at TEXT DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS daytrade_signals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_token TEXT NOT NULL,
+            asset TEXT NOT NULL,
+            signal TEXT NOT NULL,
+            confidence TEXT,
+            score INTEGER,
+            entry_price REAL,
+            tp REAL,
+            sl REAL,
+            rr REAL,
+            leverage INTEGER,
+            liq_price REAL,
+            max_hold_hours INTEGER DEFAULT 6,
+            exit_by TEXT,
+            signal_json TEXT,
+            status TEXT DEFAULT 'open',
+            result TEXT,
+            closed_price REAL,
+            pnl_pct REAL,
+            created_at TEXT DEFAULT (datetime('now')),
+            closed_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS daytrade_alerts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_token TEXT NOT NULL,
+            asset TEXT NOT NULL,
+            signal TEXT NOT NULL,
+            message TEXT NOT NULL,
+            sent_telegram INTEGER DEFAULT 0,
+            sent_browser INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
     `);
 
     return db;
