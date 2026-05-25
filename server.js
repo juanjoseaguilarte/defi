@@ -69,5 +69,5 @@ app.listen(PORT, '0.0.0.0', () => {
             steps: steps.map(s => ({ ...s, done: !!s.done, entry_asset: strat.main_asset })),
         };
     });
-    startCron(15 * 60 * 1000); // check rules every 15 min
+    startCron(); // trades every 60s, strategy every 15min
 });

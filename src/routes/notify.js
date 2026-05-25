@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const {
-    runCheck, getNotifyStatus, sendTelegram, detectChatId,
+    getNotifyStatus, sendTelegram, detectChatId,
     setTelegramConfig, getTelegramConfig,
 } = require('../services/notify');
 
@@ -57,7 +57,8 @@ router.post('/telegram/test', async (req, res) => {
 // POST /api/notify/check
 router.post('/check', async (req, res) => {
     try {
-        const result = await runCheck();
+        const { checkRules } = require('../services/rules');
+        const result = await checkRules(null);
         res.json({ ok: true, result });
     } catch (e) {
         res.status(500).json({ error: e.message });
