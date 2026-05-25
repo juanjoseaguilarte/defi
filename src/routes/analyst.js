@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const { pyAnalyst } = require('../services/pybridge');
-const { getAnalysis } = require('../services/phases');
 
 let cachedAnalysis = null;
 let cacheTime = 0;
@@ -13,21 +12,13 @@ router.get('/', async (req, res) => {
             return res.json(cachedAnalysis);
         }
 
-        let data;
-        try {
-            data = await pyAnalyst();
-        } catch (pyErr) {
-            console.error('[Analyst] Python failed, JS fallback:', pyErr.message);
-            data = await getAnalysis();
-            data.engine = 'js-fallback';
-        }
-
+        const data = await pyAnalyst();
         cachedAnalysis = data;
         cacheTime = Date.now();
         res.json(data);
     } catch (e) {
         console.error('Analyst error:', e);
-        res.status(500).json({ error: 'Error al obtener análisis' });
+        res.status(500).json({ error: 'Error en análisis Python: ' + e.message });
     }
 });
 
