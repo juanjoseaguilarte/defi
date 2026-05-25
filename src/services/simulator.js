@@ -92,6 +92,7 @@ function openStrategy(phase, cash, price, asset, pos, date, log) {
     let allocated = 0;
 
     if (phase === 'bear') {
+        // E4: Stables + SHORT para proteger y beneficiar de caída
         const stableAmt = Math.floor(cash * 0.75);
         pos.aave_supply = stableAmt;
         allocated += stableAmt;
@@ -102,37 +103,46 @@ function openStrategy(phase, cash, price, asset, pos, date, log) {
         log.push({ date, type: 'open', message: `E4 BAJISTA: Supply $${stableAmt} + SHORT x${SHORT_LEV} $${sm} (entrada $${price.toFixed(0)})` });
 
     } else if (phase === 'bull') {
+        // E2: LP + LONG para amplificar tendencia alcista
         pos.aave_supply = cash;
         const borrow = Math.floor(cash * 0.55);
         pos.aave_borrow = borrow;
-        const lp = Math.floor(borrow * 0.93);
+        const hedgeAmt = Math.floor(borrow * 0.05);
+        const lp = borrow - hedgeAmt;
         pos.lp_amount = lp; pos.lp_entry = price;
-        pos.lp_range_low = price * 0.90; pos.lp_range_high = price * 1.20;
-        const lm = Math.floor(borrow * 0.05);
-        pos.long_margin = lm; pos.long_lev = LONG_LEV;
-        pos.long_size = lm * LONG_LEV; pos.long_entry = price;
+        pos.lp_range_low = price * 0.80; pos.lp_range_high = price * 1.25;
+        pos.long_margin = hedgeAmt; pos.long_lev = LONG_LEV;
+        pos.long_size = hedgeAmt * LONG_LEV; pos.long_entry = price;
         allocated = cash;
-        log.push({ date, type: 'open', message: `E2 ALCISTA: Colateral $${cash.toFixed(0)}, Borrow $${borrow}, LP $${lp} rango $${pos.lp_range_low.toFixed(0)}-$${pos.lp_range_high.toFixed(0)}, LONG x${LONG_LEV} $${lm} (entrada $${price.toFixed(0)})` });
+        log.push({ date, type: 'open', message: `E2 ALCISTA: Colateral $${cash.toFixed(0)}, Borrow $${borrow}, LP $${lp} rango $${pos.lp_range_low.toFixed(0)}-$${pos.lp_range_high.toFixed(0)}, LONG x${LONG_LEV} $${hedgeAmt} (entrada $${price.toFixed(0)})` });
 
     } else if (phase === 'accumulation') {
-        // E1: construir posición LP delta neutral, sin short especulativo
+        // E1: LP + SHORT pequeño delta neutral (protege LP sin apostar dirección)
         pos.aave_supply = cash;
         const borrow = Math.floor(cash * 0.40);
         pos.aave_borrow = borrow;
-        const lp = Math.floor(borrow * 0.95);
+        const hedgeAmt = Math.floor(borrow * 0.08);
+        const lp = borrow - hedgeAmt;
         pos.lp_amount = lp; pos.lp_entry = price;
-        pos.lp_range_low = price * 0.90; pos.lp_range_high = price * 1.10;
+        pos.lp_range_low = price * 0.85; pos.lp_range_high = price * 1.15;
+        pos.short_margin = hedgeAmt; pos.short_lev = SHORT_LEV;
+        pos.short_size = hedgeAmt * SHORT_LEV; pos.short_entry = price;
         allocated = cash;
-        log.push({ date, type: 'open', message: `E1 ACUMULACIÓN: Colateral $${cash.toFixed(0)}, Borrow $${borrow}, LP $${lp} rango $${pos.lp_range_low.toFixed(0)}-$${pos.lp_range_high.toFixed(0)}. Sin short — acumulando.` });
+        log.push({ date, type: 'open', message: `E1 ACUMULACIÓN: Colateral $${cash.toFixed(0)}, Borrow $${borrow}, LP $${lp}, SHORT hedge x${SHORT_LEV} $${hedgeAmt} (entrada $${price.toFixed(0)})` });
 
     } else if (phase === 'distribution') {
-        // E3: NO abrir short — solo reducir exposición y esperar confirmación de E4
-        // El short se abrirá cuando confirme E4 (bear), no antes
+        // E3: LP + SHORT más grande (protege LP y prepara para caída)
         pos.aave_supply = cash;
-        const borrow = Math.floor(cash * 0.25);
+        const borrow = Math.floor(cash * 0.35);
         pos.aave_borrow = borrow;
+        const hedgeAmt = Math.floor(borrow * 0.12);
+        const lp = borrow - hedgeAmt;
+        pos.lp_amount = lp; pos.lp_entry = price;
+        pos.lp_range_low = price * 0.80; pos.lp_range_high = price * 1.10;
+        pos.short_margin = hedgeAmt; pos.short_lev = SHORT_LEV;
+        pos.short_size = hedgeAmt * SHORT_LEV; pos.short_entry = price;
         allocated = cash;
-        log.push({ date, type: 'open', message: `E3 DISTRIBUCIÓN: Colateral $${cash.toFixed(0)}, Borrow conservador $${borrow}. SIN short — esperando confirmación E4.` });
+        log.push({ date, type: 'open', message: `E3 DISTRIBUCIÓN: Colateral $${cash.toFixed(0)}, Borrow $${borrow}, LP $${lp}, SHORT hedge x${SHORT_LEV} $${hedgeAmt} (entrada $${price.toFixed(0)})` });
     }
     return allocated;
 }
@@ -188,25 +198,48 @@ function runBacktest(candles, amount, asset) {
                     daysSinceOpen = 0;
                     cash -= openStrategy(newPhase, cash, price, asset, pos, date, log);
                 } else if (strategyActive && !major) {
+                    // Close old hedge, open new one — LP always protected
                     cash += closePerps(pos, price, date, log);
-                    log.push({ date, type: 'phase_adjust', message: `Ajuste menor: ${prevPhase} → ${newPhase}. LP mantenido.` });
                     confirmedPhase = newPhase;
+
+                    // Always open a hedge matching the new phase
                     if (newPhase === 'bear') {
-                        // Only open short when confirmed E4 bear
-                        const hm = Math.floor(cash * 0.05);
-                        if (hm > 50) {
+                        const hm = Math.floor(cash * 0.08);
+                        if (hm > 30) {
                             pos.short_margin = hm; pos.short_lev = SHORT_LEV;
                             pos.short_size = hm * SHORT_LEV; pos.short_entry = price;
                             cash -= hm;
-                            log.push({ date, type: 'adjust_open', message: `SHORT x${SHORT_LEV} $${hm} (entrada $${price.toFixed(0)}) — E4 confirmada` });
+                            log.push({ date, type: 'phase_adjust', message: `${prevPhase} → E4: LP mantenido + SHORT x${SHORT_LEV} $${hm} (protege LP de caída)` });
+                        }
+                    } else if (newPhase === 'distribution') {
+                        const hm = Math.floor(cash * 0.04);
+                        if (hm > 30) {
+                            pos.short_margin = hm; pos.short_lev = SHORT_LEV;
+                            pos.short_size = hm * SHORT_LEV; pos.short_entry = price;
+                            cash -= hm;
+                            log.push({ date, type: 'phase_adjust', message: `${prevPhase} → E3: LP mantenido + SHORT hedge x${SHORT_LEV} $${hm} (protege LP)` });
+                        } else {
+                            log.push({ date, type: 'phase_adjust', message: `${prevPhase} → E3: LP mantenido. Hedge demasiado pequeño.` });
+                        }
+                    } else if (newPhase === 'accumulation') {
+                        const hm = Math.floor(cash * 0.03);
+                        if (hm > 30) {
+                            pos.short_margin = hm; pos.short_lev = SHORT_LEV;
+                            pos.short_size = hm * SHORT_LEV; pos.short_entry = price;
+                            cash -= hm;
+                            log.push({ date, type: 'phase_adjust', message: `${prevPhase} → E1: LP mantenido + SHORT delta-neutral x${SHORT_LEV} $${hm}` });
+                        } else {
+                            log.push({ date, type: 'phase_adjust', message: `${prevPhase} → E1: LP mantenido sin hedge (capital bajo).` });
                         }
                     } else if (newPhase === 'bull') {
-                        const lm = Math.floor(cash * 0.03);
-                        if (lm > 50) {
+                        const lm = Math.floor(cash * 0.04);
+                        if (lm > 30) {
                             pos.long_margin = lm; pos.long_lev = LONG_LEV;
                             pos.long_size = lm * LONG_LEV; pos.long_entry = price;
                             cash -= lm;
-                            log.push({ date, type: 'adjust_open', message: `LONG x${LONG_LEV} $${lm} (entrada $${price.toFixed(0)})` });
+                            log.push({ date, type: 'phase_adjust', message: `${prevPhase} → E2: LP mantenido + LONG x${LONG_LEV} $${lm} (amplifica LP)` });
+                        } else {
+                            log.push({ date, type: 'phase_adjust', message: `${prevPhase} → E2: LP mantenido sin long (capital bajo).` });
                         }
                     }
                 } else {
@@ -225,7 +258,7 @@ function runBacktest(candles, amount, asset) {
                 const cost = pos.lp_amount * 0.01;
                 cash -= cost;
                 log.push({ date, type: 'lp_rebalance', message: `LP rebalanceado. Coste: $${cost.toFixed(0)}` });
-                pos.lp_range_low = price * 0.90; pos.lp_range_high = price * 1.10; pos.lp_entry = price;
+                pos.lp_range_low = price * 0.80; pos.lp_range_high = price * 1.20; pos.lp_entry = price;
             }
             if (pos.lp_amount > 0) cash += pos.lp_amount * (LP_APY[`${asset}-USDC`] || 20) / 100 / 365;
             if (pos.aave_supply > 0) cash += pos.aave_supply * 0.035 / 365;
