@@ -1771,6 +1771,12 @@ if ('serviceWorker' in navigator) {
 // OPERATIVA DIARIA
 // ═══════════════════════════════════════════════════════════════
 
+let dtWatchInterval = null;
+let dtWatchAsset = null;
+let dtWatchCount = 0;
+const DT_WATCH_INTERVAL_MS = 3 * 60 * 1000;
+const DT_WATCH_MAX_HOURS = 6;
+
 async function analyzeDayTrade() {
     const asset = document.getElementById('dtAsset').value;
     const btn = document.getElementById('dtAnalyzeBtn');
@@ -1792,6 +1798,96 @@ async function analyzeDayTrade() {
         loading.style.display = 'none';
         btn.disabled = false; btn.textContent = 'Analizar';
     }
+}
+
+async function toggleDtWatch() {
+    if (dtWatchInterval) {
+        stopDtWatch();
+        return;
+    }
+
+    if (notifPermission !== 'granted') {
+        const perm = await requestNotifPermission();
+        if (perm !== 'granted') {
+            const wb = document.getElementById('dtWatchBtn');
+            if (wb) { wb.textContent = 'Permite notificaciones primero'; setTimeout(() => { wb.textContent = 'Avisarme'; }, 2500); }
+            return;
+        }
+    }
+
+    const asset = document.getElementById('dtAsset').value;
+    dtWatchAsset = asset;
+    dtWatchCount = 0;
+    const maxChecks = Math.floor(DT_WATCH_MAX_HOURS * 60 / (DT_WATCH_INTERVAL_MS / 60000));
+
+    const wb = document.getElementById('dtWatchBtn');
+    if (wb) { wb.textContent = `Vigilando ${asset}...`; wb.classList.add('dt-watch-btn--active'); }
+    updateWatchStatus(`Vigilando ${asset}. Chequeo cada 3 min (max ${DT_WATCH_MAX_HOURS}h).`);
+
+    // Send Telegram notification that watch started
+    fetch(`${APP_BASE}/api/daytrader/watch`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ asset, action: 'start' }),
+    }).catch(() => {});
+
+    dtWatchInterval = setInterval(async () => {
+        dtWatchCount++;
+        if (dtWatchCount > maxChecks) { stopDtWatch(); return; }
+        await dtWatchCheck();
+    }, DT_WATCH_INTERVAL_MS);
+
+    dtWatchCheck();
+}
+
+async function dtWatchCheck() {
+    try {
+        updateWatchStatus(`Vigilando ${dtWatchAsset}... (#${dtWatchCount} - ${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })})`);
+
+        const resp = await fetch(`${APP_BASE}/api/daytrader?asset=${dtWatchAsset}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+
+        if (data.signal === 'LONG' || data.signal === 'SHORT') {
+            renderDayTrade(data);
+
+            const dir = data.signal;
+            const body = `${dir} ${data.asset} a $${fmtP(data.entry)}\nTP: $${fmtP(data.tp)} (${data.tpDistPct}%)\nSL: $${fmtP(data.sl)} (${data.slDistPct}%)\nx${data.leverage} | R:R ${data.rr}`;
+
+            showBrowserNotif({
+                type: 'critical',
+                message: `${dir} ${data.asset} — TP $${fmtP(data.tp)} / SL $${fmtP(data.sl)}`,
+                category: 'daytrader', asset: data.asset,
+            });
+
+            fetch(`${APP_BASE}/api/daytrader/watch`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ asset: dtWatchAsset, action: 'signal', trade: data }),
+            }).catch(() => {});
+
+            stopDtWatch();
+            updateWatchStatus(`${dir} encontrado. Alerta enviada.`);
+        } else {
+            renderDayTrade(data);
+        }
+    } catch (_) {}
+}
+
+function stopDtWatch() {
+    if (dtWatchInterval) { clearInterval(dtWatchInterval); dtWatchInterval = null; }
+    const wb = document.getElementById('dtWatchBtn');
+    if (wb) { wb.textContent = 'Avisarme'; wb.classList.remove('dt-watch-btn--active'); }
+    dtWatchAsset = null;
+    dtWatchCount = 0;
+
+    fetch(`${APP_BASE}/api/daytrader/watch`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'stop' }),
+    }).catch(() => {});
+}
+
+function updateWatchStatus(msg) {
+    const el = document.getElementById('dtWatchStatus');
+    if (el) el.textContent = msg;
 }
 
 function renderDayTrade(d) {
@@ -1841,6 +1937,15 @@ function renderDayTrade(d) {
             ${d.rr ? `<div class="dt-signal__rr">R:R: ${d.rr.toFixed(2)}</div>` : ''}
         </div>`;
     }
+
+    // Watch button
+    const isWatching = !!dtWatchInterval;
+    html += `<div class="dt-watch-row">
+        <button class="dt-watch-btn ${isWatching ? 'dt-watch-btn--active' : ''}" id="dtWatchBtn" onclick="toggleDtWatch()">
+            ${isWatching ? 'Vigilando ' + dtWatchAsset + '...' : 'Avisarme'}
+        </button>
+        <div class="dt-watch-status" id="dtWatchStatus">${isWatching ? 'Vigilando...' : 'Pulsa para vigilar. Te avisa por Telegram y notificación cuando haya señal.'}</div>
+    </div>`;
 
     // Timeframe analysis
     html += '<div class="dt-analysis">';
