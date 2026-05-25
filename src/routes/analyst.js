@@ -17,8 +17,12 @@ router.get('/', async (req, res) => {
         cacheTime = Date.now();
         res.json(data);
     } catch (e) {
-        console.error('Analyst error:', e);
-        res.status(500).json({ error: 'Error en análisis Python: ' + e.message });
+        console.error('Analyst error:', e.message);
+        if (cachedAnalysis) {
+            cachedAnalysis.engine = 'python-cached';
+            return res.json(cachedAnalysis);
+        }
+        res.status(500).json({ error: 'Python: ' + e.message, engine: 'python-error' });
     }
 });
 

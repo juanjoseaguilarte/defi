@@ -17,8 +17,12 @@ router.get('/', async (req, res) => {
         cacheTime = Date.now();
         res.json(data);
     } catch (e) {
-        console.error('Signals error:', e);
-        res.status(500).json({ error: 'Error en señales Python: ' + e.message });
+        console.error('Signals error:', e.message);
+        if (cachedSignals) {
+            cachedSignals.engine = 'python-cached';
+            return res.json(cachedSignals);
+        }
+        res.status(500).json({ error: 'Python: ' + e.message, engine: 'python-error' });
     }
 });
 

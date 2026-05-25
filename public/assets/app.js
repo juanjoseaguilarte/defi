@@ -2404,9 +2404,15 @@ function renderSingleTrade(d) {
                 </div>
             </div>
         </div>`;
+    } else if (d.signal === 'ERROR') {
+        html += `<div class="dt-signal dt-signal--no" style="border-left-color:var(--bear)">
+            <div class="dt-signal__header-no">${d.asset || '?'} <span class="dt-engine-badge dt-engine-badge--js">ERROR</span></div>
+            <div class="dt-signal__dir" style="color:var(--bear);font-size:1rem">ERROR PYTHON</div>
+            <div class="dt-signal__reason">${d.error || 'Error desconocido'}</div>
+        </div>`;
     } else {
         html += `<div class="dt-signal dt-signal--no">
-            <div class="dt-signal__header-no">${d.asset || '?'} <span style="font-weight:400;font-size:0.7rem;color:var(--text-3)">$${fmtP(d.price)}</span> <span class="dt-engine-badge dt-engine-badge--${d.engine === 'python' ? 'py' : 'js'}">${d.engine === 'python' ? 'Python' : 'JS'}</span></div>
+            <div class="dt-signal__header-no">${d.asset || '?'} <span style="font-weight:400;font-size:0.7rem;color:var(--text-3)">$${fmtP(d.price)}</span> <span class="dt-engine-badge dt-engine-badge--${d.engine === 'python' ? 'py' : 'js'}">${d.engine === 'python' ? 'Python' : d.engine || 'JS'}</span></div>
             <div class="dt-signal__dir" style="color:var(--text-3);font-size:1rem">NO OPERAR</div>
             <div class="dt-signal__reason">${d.reason}</div>
             ${d.rr ? `<div class="dt-signal__rr">R:R: ${d.rr.toFixed(2)}</div>` : ''}
