@@ -37,6 +37,7 @@ navItems.forEach(btn => {
             if (page === 'analyst') loadAnalyst();
             if (page === 'signals') loadSignals();
             if (page === 'strategy') initTracker();
+            if (page === 'daytrader') loadOpenTrades();
         }
     });
 });
@@ -1961,6 +1962,7 @@ function renderDayTradeMulti(trades) {
 
     el.innerHTML = html;
     loadDtHistory();
+    loadOpenTrades();
 }
 
 async function loadDtHistory() {
@@ -2049,6 +2051,7 @@ async function closeDtSignal(id, result) {
         body: JSON.stringify({ id, result, closed_price: 0, pnl_pct: 0 }),
     });
     loadDtHistory();
+    loadOpenTrades();
 }
 
 function showEnterForm(tradeJson) {
@@ -2182,6 +2185,107 @@ function renderActiveTracking(trades) {
     }
     html += '</div>';
     el.innerHTML = html;
+}
+
+async function addManualTrade() {
+    const asset = document.getElementById('dtManualAsset').value;
+    const signal = document.getElementById('dtManualDir').value;
+    const entry = parseFloat(document.getElementById('dtManualEntry').value);
+    const tp = parseFloat(document.getElementById('dtManualTp').value);
+    const sl = parseFloat(document.getElementById('dtManualSl').value);
+    const lev = parseInt(document.getElementById('dtManualLev').value) || 3;
+    const margin = parseFloat(document.getElementById('dtManualMargin').value) || 0;
+
+    if (!entry || !tp || !sl) { alert('Rellena entrada, TP y SL'); return; }
+
+    const resp = await fetch(`${APP_BASE}/api/daytrader/save`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            device_token: getDeviceToken(),
+            trade: { asset, signal, confidence: 'manual', score: 0, entry, tp, sl, rr: 0, leverage: lev, liqPrice: 0, maxHoldHours: 6, exitBy: new Date(Date.now() + 6*3600000).toISOString() },
+        }),
+    });
+    const data = await resp.json();
+    if (!data.ok) return;
+
+    await fetch(`${APP_BASE}/api/daytrader/enter`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: data.id, entry_price: entry, tp, sl, leverage: lev, margin, signal, asset }),
+    });
+
+    document.getElementById('dtManualEntry').value = '';
+    document.getElementById('dtManualTp').value = '';
+    document.getElementById('dtManualSl').value = '';
+    document.getElementById('dtManualMargin').value = '';
+    document.getElementById('dtAddManual').open = false;
+
+    startTradeTracking();
+    loadOpenTrades();
+}
+
+async function loadOpenTrades() {
+    const el = document.getElementById('dtOpenTrades');
+    if (!el) return;
+    const dt = getDeviceToken();
+
+    try {
+        const resp = await fetch(`${APP_BASE}/api/daytrader/tracking?device_token=${dt}`);
+        const data = await resp.json();
+        if (!data.ok || !data.trades?.length) {
+            el.innerHTML = '';
+            return;
+        }
+
+        let html = '<div class="dt-open-section"><div class="dt-open-section__title">Operaciones abiertas</div>';
+
+        for (const t of data.trades) {
+            const pair = t.asset + 'USDT';
+            const price = latestPrices[pair] || 0;
+            const isLong = t.signal === 'LONG';
+            const dirColor = isLong ? 'var(--bull)' : 'var(--bear)';
+            const pnl = price ? (isLong ? (price - t.entry_price) / t.entry_price * t.leverage * 100 : (t.entry_price - price) / t.entry_price * t.leverage * 100) : 0;
+            const pnlColor = pnl >= 0 ? 'var(--bull)' : 'var(--bear)';
+
+            const totalRange = Math.abs(t.tp - t.sl);
+            const distToTp = price ? Math.abs(price - t.tp) : totalRange;
+            const pctToTp = totalRange > 0 ? Math.max(0, Math.min(100, (1 - distToTp / totalRange) * 100)) : 0;
+
+            const exitTime = t.exit_by ? new Date(t.exit_by) : null;
+            const remaining = exitTime ? Math.max(0, exitTime.getTime() - Date.now()) : 0;
+            const minsLeft = Math.round(remaining / 60000);
+            const timeStr = minsLeft > 60 ? `${Math.floor(minsLeft/60)}h ${minsLeft%60}m` : `${minsLeft}m`;
+
+            html += `<div class="dt-open-card">
+                <div class="dt-open-card__header">
+                    <span class="dt-open-card__dir" style="color:${dirColor}">${t.signal} ${t.asset}</span>
+                    <span class="dt-open-card__pnl" style="color:${pnlColor}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}%</span>
+                </div>
+                <div class="dt-open-card__bar">
+                    <div class="dt-open-card__fill" style="width:${pctToTp}%;background:${pnlColor}"></div>
+                </div>
+                <div class="dt-open-card__levels">
+                    <span style="color:var(--bear)">SL $${fmtP(t.sl)}</span>
+                    <span style="font-weight:700;color:var(--text-1)">${price ? '$' + fmtP(price) : '...'}</span>
+                    <span style="color:var(--bull)">TP $${fmtP(t.tp)}</span>
+                </div>
+                <div class="dt-open-card__info">
+                    <span>Entrada: $${fmtP(t.entry_price)}</span>
+                    <span>x${t.leverage}</span>
+                    ${remaining > 0 ? `<span>${timeStr} restante</span>` : '<span style="color:var(--dist)">Expirado</span>'}
+                </div>
+                <div class="dt-open-card__actions">
+                    <button class="dt-h-close dt-h-close--tp" onclick="closeDtSignal(${t.id},'tp')">TP alcanzado</button>
+                    <button class="dt-h-close dt-h-close--sl" onclick="closeDtSignal(${t.id},'sl')">SL tocado</button>
+                    <button class="dt-h-close" onclick="closeDtSignal(${t.id},'manual')">Cerrar manual</button>
+                </div>
+            </div>`;
+        }
+
+        html += '</div>';
+        el.innerHTML = html;
+
+        if (!dtTrackInterval) startTradeTracking();
+    } catch (_) {}
 }
 
 function renderSingleTrade(d) {

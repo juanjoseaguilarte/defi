@@ -238,7 +238,48 @@
             <div class="section-header">
                 <h2 class="section-title">Operativa Diaria</h2>
             </div>
-            <div class="strategy-input-wrap">
+
+            <!-- Operaciones abiertas (siempre visible) -->
+            <div id="dtOpenTrades"></div>
+
+            <!-- Añadir operación manual -->
+            <details class="dt-add-manual" id="dtAddManual">
+                <summary class="dt-add-manual__toggle">+ A&ntilde;adir operaci&oacute;n</summary>
+                <div class="dt-add-manual__form">
+                    <div class="dt-enter-form__row">
+                        <div>
+                            <label>Activo</label>
+                            <select id="dtManualAsset" class="dt-enter-input">
+                                <option value="BTC">BTC</option>
+                                <option value="ETH">ETH</option>
+                                <option value="SOL">SOL</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Direcci&oacute;n</label>
+                            <select id="dtManualDir" class="dt-enter-input">
+                                <option value="LONG">LONG</option>
+                                <option value="SHORT">SHORT</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="dt-enter-form__row">
+                        <div><label>Precio entrada</label><input type="number" step="any" id="dtManualEntry" class="dt-enter-input" placeholder="77164"></div>
+                        <div><label>Leverage</label><input type="number" id="dtManualLev" class="dt-enter-input" value="3"></div>
+                    </div>
+                    <div class="dt-enter-form__row">
+                        <div><label>Take Profit</label><input type="number" step="any" id="dtManualTp" class="dt-enter-input" placeholder="76892"></div>
+                        <div><label>Stop Loss</label><input type="number" step="any" id="dtManualSl" class="dt-enter-input" placeholder="77713"></div>
+                    </div>
+                    <div class="dt-enter-form__row">
+                        <div><label>Margen ($)</label><input type="number" step="any" id="dtManualMargin" class="dt-enter-input" placeholder="18.11"></div>
+                        <div><button class="dt-confirm-btn" onclick="addManualTrade()">A&ntilde;adir</button></div>
+                    </div>
+                </div>
+            </details>
+
+            <!-- Analizar señales -->
+            <div class="strategy-input-wrap" style="margin-top:14px">
                 <div class="dt-asset-selector">
                     <label class="dt-asset-pill"><input type="checkbox" class="dt-asset-check" value="ETH" checked><span>ETH</span></label>
                     <label class="dt-asset-pill"><input type="checkbox" class="dt-asset-check" value="BTC" checked><span>BTC</span></label>
