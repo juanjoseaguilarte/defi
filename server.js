@@ -31,6 +31,7 @@ app.use('/api/admin', require('./src/routes/admin'));
 app.use('/api/sync', require('./src/routes/sync'));
 app.use('/api/rules', require('./src/routes/rules'));
 app.use('/api/notify', require('./src/routes/notify'));
+app.use('/api/daytrader', require('./src/routes/daytrader'));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 app.get('/api/version', (req, res) => {

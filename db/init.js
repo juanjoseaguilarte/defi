@@ -120,6 +120,12 @@ function getDb() {
             executed_at TEXT DEFAULT (datetime('now')),
             created_at TEXT DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS app_config (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
     `);
 
     return db;

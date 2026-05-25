@@ -1371,10 +1371,12 @@ async function setupTelegram() {
         });
         const data = await resp.json();
         if (data.ok) {
+            localStorage.setItem('defi_tg_token', token);
             if (statusEl) statusEl.innerHTML = `<span style="color:var(--bull)">✓ Conectado (chat: ${data.chat_id})</span>`;
             if (btn) { btn.textContent = '✓ Listo'; }
             loadRulesPanel();
         } else {
+            localStorage.setItem('defi_tg_token', token);
             if (statusEl) statusEl.innerHTML = `<span style="color:var(--dist)">${data.message}</span>`;
             if (btn) { btn.textContent = 'Detectar'; btn.disabled = false; btn.onclick = detectTelegramChat; }
         }
@@ -1472,9 +1474,21 @@ async function loadRulesPanel() {
     if (!el) return;
 
     const status = await checkNotifyStatus();
-    const tgOk = status?.telegram?.configured;
+    let tgOk = status?.telegram?.configured;
     const cronOk = status?.cron?.running;
     const notifOn = notifPermission === 'granted';
+
+    // Auto-restore Telegram config if lost (e.g. after DB reset on deploy)
+    if (!tgOk && localStorage.getItem('defi_tg_token')) {
+        try {
+            const resp = await fetch(`${APP_BASE}/api/notify/telegram/setup`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bot_token: localStorage.getItem('defi_tg_token') }),
+            });
+            const data = await resp.json();
+            if (data.ok) tgOk = true;
+        } catch (_) {}
+    }
 
     let html = '<div class="rules-panel">';
 
@@ -1751,6 +1765,147 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (updateAvailable) location.reload();
     });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OPERATIVA DIARIA
+// ═══════════════════════════════════════════════════════════════
+
+async function analyzeDayTrade() {
+    const asset = document.getElementById('dtAsset').value;
+    const btn = document.getElementById('dtAnalyzeBtn');
+    const result = document.getElementById('dtResult');
+    const loading = document.getElementById('dtLoading');
+
+    btn.disabled = true; btn.textContent = 'Analizando...';
+    result.innerHTML = '';
+    loading.style.display = 'flex';
+
+    try {
+        const resp = await fetch(`${APP_BASE}/api/daytrader?asset=${asset}`);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        renderDayTrade(data);
+    } catch (e) {
+        result.innerHTML = `<div class="strategy-warnings"><div class="strategy-warnings__item">${e.message}</div></div>`;
+    } finally {
+        loading.style.display = 'none';
+        btn.disabled = false; btn.textContent = 'Analizar';
+    }
+}
+
+function renderDayTrade(d) {
+    const el = document.getElementById('dtResult');
+    const isLong = d.signal === 'LONG';
+    const isShort = d.signal === 'SHORT';
+    const isTrade = isLong || isShort;
+    const dirColor = isLong ? 'var(--bull)' : isShort ? 'var(--bear)' : 'var(--text-3)';
+
+    let html = '';
+
+    // Signal card
+    if (isTrade) {
+        const confColors = { alta: 'var(--bull)', media: 'var(--dist)', baja: 'var(--bear)' };
+        html += `<div class="dt-signal" style="border-color: ${dirColor}">
+            <div class="dt-signal__dir" style="color:${dirColor}">${d.signal} ${d.asset}</div>
+            <div class="dt-signal__conf">Confianza: <span style="color:${confColors[d.confidence]}">${d.confidence.toUpperCase()}</span> (score ${d.score})</div>
+            <div class="dt-signal__price">Entrada: <b>$${fmtP(d.entry)}</b></div>
+            <div class="dt-levels">
+                <div class="dt-level dt-level--tp">
+                    <span class="dt-level__label">Take Profit</span>
+                    <span class="dt-level__val">$${fmtP(d.tp)}</span>
+                    <span class="dt-level__pct" style="color:var(--bull)">+${d.tpDistPct}%</span>
+                </div>
+                <div class="dt-level dt-level--sl">
+                    <span class="dt-level__label">Stop Loss</span>
+                    <span class="dt-level__val">$${fmtP(d.sl)}</span>
+                    <span class="dt-level__pct" style="color:var(--bear)">-${d.slDistPct}%</span>
+                </div>
+                <div class="dt-level">
+                    <span class="dt-level__label">R:R</span>
+                    <span class="dt-level__val" style="color:${d.rr >= 2 ? 'var(--bull)' : 'var(--dist)'}">${d.rr}</span>
+                    <span class="dt-level__pct"></span>
+                </div>
+            </div>
+            <div class="dt-meta">
+                <div>Leverage: <b>x${d.leverage}</b></div>
+                <div>Liq: $${fmtP(d.liqPrice)}</div>
+                <div>Ganancia: <span style="color:var(--bull)">${d.potentialPnl.win}</span> / Pérdida: <span style="color:var(--bear)">${d.potentialPnl.loss}</span></div>
+            </div>
+            <div class="dt-timer">Cerrar antes de: <b>${new Date(d.exitBy).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</b> (${d.maxHoldHours}h max)</div>
+        </div>`;
+    } else {
+        html += `<div class="dt-signal dt-signal--no">
+            <div class="dt-signal__dir" style="color:var(--text-3)">NO OPERAR</div>
+            <div class="dt-signal__reason">${d.reason}</div>
+            ${d.rr ? `<div class="dt-signal__rr">R:R: ${d.rr.toFixed(2)}</div>` : ''}
+        </div>`;
+    }
+
+    // Timeframe analysis
+    html += '<div class="dt-analysis">';
+    html += '<div class="dt-analysis__title">Análisis Multi-Timeframe</div>';
+
+    const tfs = [
+        { label: '6H', data: d.analysis.tf6h },
+        { label: '1H', data: d.analysis.tf1h },
+        { label: '15M', data: d.analysis.tf15m },
+    ];
+
+    for (const tf of tfs) {
+        const biasColors = { bullish: 'var(--bull)', weakBullish: 'rgba(34,197,94,0.6)', neutral: 'var(--text-3)', weakBearish: 'rgba(239,68,68,0.6)', bearish: 'var(--bear)' };
+        const biasLabels = { bullish: 'ALCISTA', weakBullish: 'ALCISTA DEBIL', neutral: 'LATERAL', weakBearish: 'BAJISTA DEBIL', bearish: 'BAJISTA' };
+        const momLabels = { bullish: 'Comprador', neutral: 'Neutral', bearish: 'Vendedor' };
+
+        html += `<div class="dt-tf">
+            <div class="dt-tf__label">${tf.label}</div>
+            <div class="dt-tf__bias" style="color:${biasColors[tf.data.bias]}">${biasLabels[tf.data.bias] || tf.data.bias}</div>
+            <div class="dt-tf__details">
+                <span>SMA20: $${fmtP(tf.data.sma20)}</span>
+                <span>${tf.data.aboveSma ? 'Encima' : 'Debajo'} (${tf.data.distPct > 0 ? '+' : ''}${tf.data.distPct.toFixed(2)}%)</span>
+                <span>Pendiente: ${tf.data.slope > 0 ? '+' : ''}${tf.data.slope.toFixed(2)}%</span>
+                <span>Momento: ${momLabels[tf.data.momentum]}</span>
+            </div>
+        </div>`;
+    }
+    html += '</div>';
+
+    // S/R Zones
+    if (d.zones) {
+        html += '<div class="dt-zones">';
+        html += '<div class="dt-zones__title">Zonas S/R (1H)</div>';
+        if (d.zones.resistances?.length) {
+            html += '<div class="dt-zones__section"><span class="dt-zones__label" style="color:var(--bear)">Resistencias</span>';
+            for (const r of d.zones.resistances) {
+                html += `<div class="dt-zone dt-zone--resist">$${fmtP(r.price)} <span class="dt-zone__dist">+${r.distPct.toFixed(2)}%</span></div>`;
+            }
+            html += '</div>';
+        }
+        html += `<div class="dt-zones__price">Precio actual: $${fmtP(d.price)}</div>`;
+        if (d.zones.supports?.length) {
+            html += '<div class="dt-zones__section"><span class="dt-zones__label" style="color:var(--bull)">Soportes</span>';
+            for (const s of d.zones.supports) {
+                html += `<div class="dt-zone dt-zone--support">$${fmtP(s.price)} <span class="dt-zone__dist">-${s.distPct.toFixed(2)}%</span></div>`;
+            }
+            html += '</div>';
+        }
+        html += '</div>';
+    }
+
+    // Reasons
+    if (d.reasons?.length) {
+        html += '<div class="dt-reasons">';
+        html += '<div class="dt-reasons__title">Razonamiento</div>';
+        for (const r of d.reasons) {
+            const isWarn = r.includes('PELIGRO') || r.includes('insuficiente');
+            html += `<div class="dt-reason ${isWarn ? 'dt-reason--warn' : ''}">${r}</div>`;
+        }
+        html += '</div>';
+    }
+
+    html += `<div style="font-size:0.6rem;color:var(--text-3);text-align:center;margin-top:12px">${d.calculated_at ? new Date(d.calculated_at).toLocaleString('es-ES') : ''}</div>`;
+
+    el.innerHTML = html;
 }
 
 checkVersion();

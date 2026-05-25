@@ -233,6 +233,26 @@
             <div id="simLoading" style="display:none" class="strategy-empty"><div class="spinner spinner--sm"></div><div>Simulando estrategia d&iacute;a a d&iacute;a...</div></div>
         </div>
 
+        <!-- OPERATIVA DIARIA -->
+        <div id="page-daytrader" class="page-view" style="display:none">
+            <div class="section-header">
+                <h2 class="section-title">Operativa Diaria</h2>
+            </div>
+            <div class="strategy-input-wrap">
+                <div class="strategy-input__row">
+                    <select class="aave-form__select" id="dtAsset" style="flex:1;padding:10px">
+                        <option value="ETH">ETH</option>
+                        <option value="BTC">BTC</option>
+                        <option value="SOL">SOL</option>
+                    </select>
+                    <button class="btn-primary" style="width:auto;padding:13px 24px;flex-shrink:0" id="dtAnalyzeBtn" onclick="analyzeDayTrade()">Analizar</button>
+                </div>
+                <div class="strategy-chain">Analiza 15m + 1H + 6H &mdash; S/R del 1H &mdash; M&aacute;ximo 6 horas</div>
+            </div>
+            <div id="dtResult"></div>
+            <div id="dtLoading" style="display:none" class="strategy-empty"><div class="spinner spinner--sm"></div><div>Analizando timeframes...</div></div>
+        </div>
+
         <!-- AJUSTES -->
         <div id="page-settings" class="page-view" style="display:none">
             <h2 class="section-title" style="margin-bottom:20px">Ajustes</h2>
@@ -281,6 +301,10 @@
             <button class="nav-item" data-page="strategy">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
                 Estrategia
+            </button>
+            <button class="nav-item" data-page="daytrader">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Diaria
             </button>
             <button class="nav-item" data-page="simulator">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
