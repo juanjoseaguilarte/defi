@@ -165,7 +165,7 @@ def analyze_tf(df):
 def find_sr(df, price):
     highs, lows = find_pivots(df, 3)
     res = sorted([h for h in highs if h['price']>price], key=lambda x:x['price'])[:3]
-    sup = sorted([l for l in lows if l['price']<price], key=lambda x:-l['price'])[:3]
+    sup = sorted([s for s in lows if s['price']<price], key=lambda x:-x['price'])[:3]
     return {
         'resistances':[{'price':round(r['price'],2),'distPct':round((r['price']-price)/price*100,2)} for r in res],
         'supports':[{'price':round(s['price'],2),'distPct':round((price-s['price'])/price*100,2)} for s in sup],
