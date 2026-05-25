@@ -2426,25 +2426,32 @@ function renderSingleTrade(d) {
     html += '<div class="dt-analysis">';
     html += '<div class="dt-analysis__title">Análisis Multi-Timeframe</div>';
 
+    const a = d.analysis || {};
     const tfs = [
-        { label: '6H', data: d.analysis.tf6h },
-        { label: '1H', data: d.analysis.tf1h },
-        { label: '15M', data: d.analysis.tf15m },
-    ];
+        { label: '6H', data: a.tf6h },
+        { label: '1H', data: a.tf1h },
+        { label: '15M', data: a.tf15m },
+    ].filter(tf => tf.data);
 
     for (const tf of tfs) {
         const biasColors = { bullish: 'var(--bull)', weakBullish: 'rgba(34,197,94,0.6)', neutral: 'var(--text-3)', weakBearish: 'rgba(239,68,68,0.6)', bearish: 'var(--bear)' };
         const biasLabels = { bullish: 'ALCISTA', weakBullish: 'ALCISTA DEBIL', neutral: 'LATERAL', weakBearish: 'BAJISTA DEBIL', bearish: 'BAJISTA' };
         const momLabels = { bullish: 'Comprador', neutral: 'Neutral', bearish: 'Vendedor' };
+        const b = tf.data.bias || 'neutral';
+        const dp = tf.data.distPct || 0;
+        const sl = tf.data.slope || 0;
+        const mom = tf.data.momentum || 'neutral';
 
         html += `<div class="dt-tf">
             <div class="dt-tf__label">${tf.label}</div>
-            <div class="dt-tf__bias" style="color:${biasColors[tf.data.bias]}">${biasLabels[tf.data.bias] || tf.data.bias}</div>
+            <div class="dt-tf__bias" style="color:${biasColors[b] || 'var(--text-3)'}">${biasLabels[b] || b}</div>
             <div class="dt-tf__details">
                 <span>SMA20: $${fmtP(tf.data.sma20)}</span>
-                <span>${tf.data.aboveSma ? 'Encima' : 'Debajo'} (${tf.data.distPct > 0 ? '+' : ''}${tf.data.distPct.toFixed(2)}%)</span>
-                <span>Pendiente: ${tf.data.slope > 0 ? '+' : ''}${tf.data.slope.toFixed(2)}%</span>
-                <span>Momento: ${momLabels[tf.data.momentum]}</span>
+                <span>${tf.data.aboveSma ? 'Encima' : 'Debajo'} (${dp > 0 ? '+' : ''}${dp.toFixed(2)}%)</span>
+                <span>Pendiente: ${sl > 0 ? '+' : ''}${sl.toFixed(2)}%</span>
+                <span>Momento: ${momLabels[mom]}</span>
+                ${tf.data.rsi ? `<span>RSI: ${tf.data.rsi.toFixed(0)}</span>` : ''}
+                ${tf.data.adx ? `<span>ADX: ${tf.data.adx.toFixed(0)}</span>` : ''}
             </div>
         </div>`;
     }
