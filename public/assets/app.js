@@ -1780,6 +1780,8 @@ const DT_WATCH_MAX_HOURS = 6;
 const DT_ALL_ASSETS = ['ETH', 'BTC', 'SOL'];
 let dtOpenSignals = [];
 let dtTrackInterval = null;
+let dtCountdownInterval = null;
+let dtNextCheckAt = 0;
 
 async function analyzeDayTrade() {
     const checks = document.querySelectorAll('.dt-asset-check:checked');
@@ -1838,13 +1840,17 @@ async function toggleDtWatch() {
         body: JSON.stringify({ assets: dtWatchAssets, action: 'start' }),
     }).catch(() => {});
 
+    dtNextCheckAt = Date.now();
     dtWatchInterval = setInterval(async () => {
         dtWatchCount++;
         if (dtWatchCount > maxChecks) { stopDtWatch(); return; }
+        dtNextCheckAt = Date.now() + DT_WATCH_INTERVAL_MS;
         await dtWatchCheck();
     }, DT_WATCH_INTERVAL_MS);
 
+    startDtCountdown();
     dtWatchCheck();
+    dtNextCheckAt = Date.now() + DT_WATCH_INTERVAL_MS;
 }
 
 async function dtWatchCheck() {
@@ -1884,6 +1890,7 @@ async function dtWatchCheck() {
 
 function stopDtWatch() {
     if (dtWatchInterval) { clearInterval(dtWatchInterval); dtWatchInterval = null; }
+    stopDtCountdown();
     const wb = document.getElementById('dtWatchBtn');
     if (wb) { wb.textContent = 'Avisarme cuando haya señal'; wb.classList.remove('dt-watch-btn--active'); }
     dtWatchAssets = [];
@@ -1914,12 +1921,15 @@ function restoreDtWatch() {
         if (wb) { wb.textContent = `Vigilando ${dtWatchAssets.join(', ')}...`; wb.classList.add('dt-watch-btn--active'); }
         updateWatchStatus(`Restaurado. Vigilando ${dtWatchAssets.join(', ')} (#${dtWatchCount}).`);
 
+        dtNextCheckAt = Date.now() + DT_WATCH_INTERVAL_MS;
         dtWatchInterval = setInterval(async () => {
             dtWatchCount++;
             if (dtWatchCount > maxChecks) { stopDtWatch(); return; }
+            dtNextCheckAt = Date.now() + DT_WATCH_INTERVAL_MS;
             await dtWatchCheck();
         }, DT_WATCH_INTERVAL_MS);
 
+        startDtCountdown();
         dtWatchCheck();
     } catch (_) { localStorage.removeItem('defi_dt_watch'); }
 }
@@ -1927,6 +1937,25 @@ function restoreDtWatch() {
 function updateWatchStatus(msg) {
     const el = document.getElementById('dtWatchStatus');
     if (el) el.textContent = msg;
+}
+
+function startDtCountdown() {
+    if (dtCountdownInterval) clearInterval(dtCountdownInterval);
+    dtCountdownInterval = setInterval(() => {
+        if (!dtWatchInterval) { clearInterval(dtCountdownInterval); dtCountdownInterval = null; return; }
+        const left = Math.max(0, dtNextCheckAt - Date.now());
+        const secs = Math.ceil(left / 1000);
+        const m = Math.floor(secs / 60);
+        const s = secs % 60;
+        const el = document.getElementById('dtWatchCountdown');
+        if (el) el.textContent = `${m}:${s.toString().padStart(2,'0')}`;
+    }, 1000);
+}
+
+function stopDtCountdown() {
+    if (dtCountdownInterval) { clearInterval(dtCountdownInterval); dtCountdownInterval = null; }
+    const el = document.getElementById('dtWatchCountdown');
+    if (el) el.textContent = '';
 }
 
 function renderDayTradeMulti(trades) {
@@ -1940,10 +1969,11 @@ function renderDayTradeMulti(trades) {
     const isWatching = !!dtWatchInterval;
     html += `<div class="dt-watch-row">
         <button class="dt-watch-btn ${isWatching ? 'dt-watch-btn--active' : ''}" id="dtWatchBtn" onclick="toggleDtWatch()">
-            ${isWatching ? 'Vigilando ' + dtWatchAssets.join(', ') + '...' : 'Avisarme cuando haya señal'}
+            ${isWatching ? 'Vigilando ' + dtWatchAssets.join(', ') : 'Avisarme cuando haya señal'}${isWatching ? ' <span class="dt-countdown" id="dtWatchCountdown"></span>' : ''}
         </button>
         <div class="dt-watch-status" id="dtWatchStatus">${isWatching ? 'Vigilando...' : 'Vigila las monedas seleccionadas. Te avisa por Telegram + notificación.'}</div>
     </div>`;
+    if (isWatching) startDtCountdown();
 
     // Sort: signals first
     const sorted = [...trades].sort((a, b) => {

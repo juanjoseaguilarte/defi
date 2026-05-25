@@ -1305,6 +1305,9 @@ input, select { font-family: var(--font); }
     cursor: pointer; transition: all 0.3s; letter-spacing: 0.5px;
 }
 .dt-watch-btn:hover { background: rgba(99,102,241,0.25); }
+.dt-countdown {
+    font-family: monospace; font-size: 0.75rem; opacity: 0.8; margin-left: 6px;
+}
 .dt-watch-btn--active {
     background: rgba(34,197,94,0.15); color: var(--bull); border-color: rgba(34,197,94,0.3);
     animation: dtPulse 2s ease-in-out infinite;
