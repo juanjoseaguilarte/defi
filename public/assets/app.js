@@ -1336,6 +1336,55 @@ async function testTelegram() {
     setTimeout(() => { if (btn) { btn.textContent = 'Test Telegram'; btn.disabled = false; }}, 3000);
 }
 
+async function setupTelegram() {
+    const tokenInput = document.getElementById('tgTokenInput');
+    const btn = document.getElementById('setupTelegramBtn');
+    const statusEl = document.getElementById('tgSetupStatus');
+    const token = tokenInput?.value?.trim();
+    if (!token) { if (statusEl) statusEl.textContent = 'Pega el token del bot'; return; }
+
+    if (btn) { btn.textContent = 'Configurando...'; btn.disabled = true; }
+    try {
+        const resp = await fetch(`${APP_BASE}/api/notify/telegram/setup`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bot_token: token }),
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            if (statusEl) statusEl.innerHTML = `<span style="color:var(--bull)">✓ Conectado (chat: ${data.chat_id})</span>`;
+            if (btn) { btn.textContent = '✓ Listo'; }
+            loadRulesPanel();
+        } else {
+            if (statusEl) statusEl.innerHTML = `<span style="color:var(--dist)">${data.message}</span>`;
+            if (btn) { btn.textContent = 'Detectar'; btn.disabled = false; btn.onclick = detectTelegramChat; }
+        }
+    } catch (_) {
+        if (statusEl) statusEl.textContent = 'Error de conexión';
+        if (btn) { btn.textContent = 'Reintentar'; btn.disabled = false; }
+    }
+}
+
+async function detectTelegramChat() {
+    const btn = document.getElementById('setupTelegramBtn');
+    const statusEl = document.getElementById('tgSetupStatus');
+    if (btn) { btn.textContent = 'Detectando...'; btn.disabled = true; }
+    try {
+        const resp = await fetch(`${APP_BASE}/api/notify/telegram/detect`, { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            if (statusEl) statusEl.innerHTML = `<span style="color:var(--bull)">✓ Conectado (chat: ${data.chat_id})</span>`;
+            if (btn) { btn.textContent = '✓ Listo'; }
+            loadRulesPanel();
+        } else {
+            if (statusEl) statusEl.innerHTML = `<span style="color:var(--dist)">${data.message}</span>`;
+            if (btn) { btn.textContent = 'Detectar'; btn.disabled = false; }
+        }
+    } catch (_) {
+        if (statusEl) statusEl.textContent = 'Error';
+        if (btn) { btn.textContent = 'Reintentar'; btn.disabled = false; }
+    }
+}
+
 async function enablePushNotifs() {
     const btn = document.getElementById('enablePushBtn');
     if (btn) { btn.textContent = 'Activando...'; btn.disabled = true; }
@@ -1406,10 +1455,27 @@ async function loadRulesPanel() {
     html += `<span class="rules-badge ${pushOk ? 'rules-badge--on' : 'rules-badge--off'}">Push ${pushOk ? '✓' : '✗'}</span>`;
     html += '</div>';
 
+    // Telegram setup
+    if (!tgOk) {
+        html += '<div class="tg-setup">';
+        html += '<div class="tg-setup__title">Configurar Telegram</div>';
+        html += '<div class="tg-setup__steps">';
+        html += '<div class="tg-setup__step">1. Abre <b>@BotFather</b> en Telegram → /newbot o usa tu bot existente</div>';
+        html += '<div class="tg-setup__step">2. Manda <b>/start</b> a tu bot (@Defijuan_bot)</div>';
+        html += '<div class="tg-setup__step">3. Pega el token aquí abajo:</div>';
+        html += '</div>';
+        html += '<div class="tg-setup__input-row">';
+        html += '<input type="text" class="tg-setup__input" id="tgTokenInput" placeholder="123456:ABC-DEF..." spellcheck="false">';
+        html += '<button class="rules-btn rules-btn--accent" id="setupTelegramBtn" onclick="setupTelegram()">Conectar</button>';
+        html += '</div>';
+        html += '<div class="tg-setup__status" id="tgSetupStatus"></div>';
+        html += '</div>';
+    }
+
     // Action buttons
     html += '<div class="rules-actions">';
     html += '<button class="rules-btn" id="enablePushBtn" onclick="enablePushNotifs()">Activar Push</button>';
-    html += '<button class="rules-btn" id="testTelegramBtn" onclick="testTelegram()">Test Telegram</button>';
+    if (tgOk) html += '<button class="rules-btn" id="testTelegramBtn" onclick="testTelegram()">Test Telegram</button>';
     html += '<button class="rules-btn rules-btn--accent" id="forceCheckBtn" onclick="forceCheckRules()">Checkear ahora</button>';
     html += '</div>';
 

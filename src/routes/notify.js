@@ -2,21 +2,22 @@ const express = require('express');
 const router = express.Router();
 const {
     addPushSubscription, removePushSubscription,
-    runCheck, getNotifyStatus, sendTelegram, VAPID_PUBLIC,
+    runCheck, getNotifyStatus, sendTelegram, detectChatId,
+    setTelegramConfig, getTelegramConfig, VAPID_PUBLIC,
 } = require('../services/notify');
 
-// GET /api/notify/status — Notification channels status
+// GET /api/notify/status
 router.get('/status', (req, res) => {
     res.json(getNotifyStatus());
 });
 
-// GET /api/notify/vapid — Get VAPID public key for push subscription
+// GET /api/notify/vapid
 router.get('/vapid', (req, res) => {
     if (!VAPID_PUBLIC) return res.json({ configured: false });
     res.json({ configured: true, publicKey: VAPID_PUBLIC });
 });
 
-// POST /api/notify/push/subscribe — Register push subscription
+// POST /api/notify/push/subscribe
 router.post('/push/subscribe', (req, res) => {
     const { device_token, subscription } = req.body;
     if (!device_token || !subscription) {
@@ -34,13 +35,59 @@ router.post('/push/unsubscribe', (req, res) => {
     res.json({ ok: true });
 });
 
-// POST /api/notify/telegram/test — Send test message
-router.post('/telegram/test', async (req, res) => {
-    const sent = await sendTelegram('🔔 *Test de conexión*\nDeFi Dashboard conectado correctamente.\nLas alertas llegarán aquí.');
-    res.json({ ok: sent, message: sent ? 'Mensaje enviado' : 'Error: verifica TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID' });
+// GET /api/notify/telegram — Get current Telegram config status
+router.get('/telegram', (req, res) => {
+    const cfg = getTelegramConfig();
+    res.json({
+        bot_token_set: !!cfg.bot_token,
+        chat_id_set: !!cfg.chat_id,
+        chat_id: cfg.chat_id || null,
+    });
 });
 
-// POST /api/notify/check — Force an immediate rule check
+// POST /api/notify/telegram/setup — Save bot token + auto-detect chat_id
+router.post('/telegram/setup', async (req, res) => {
+    const { bot_token } = req.body;
+    if (!bot_token) return res.status(400).json({ error: 'bot_token required' });
+
+    setTelegramConfig(bot_token, null);
+
+    const chatId = await detectChatId(bot_token);
+    if (chatId) {
+        setTelegramConfig(null, chatId);
+        const sent = await sendTelegram('✅ *DeFi Dashboard conectado*\nRecibirás alertas de tu estrategia aquí.');
+        res.json({ ok: true, chat_id: chatId, test_sent: sent });
+    } else {
+        res.json({
+            ok: false,
+            chat_id: null,
+            message: 'Bot token guardado. Manda /start al bot en Telegram y pulsa "Detectar" de nuevo.',
+        });
+    }
+});
+
+// POST /api/notify/telegram/detect — Re-detect chat_id
+router.post('/telegram/detect', async (req, res) => {
+    const cfg = getTelegramConfig();
+    if (!cfg.bot_token) return res.status(400).json({ error: 'Bot token not configured' });
+
+    const chatId = await detectChatId(cfg.bot_token);
+    if (chatId) {
+        setTelegramConfig(null, chatId);
+        const sent = await sendTelegram('✅ *DeFi Dashboard conectado*\nRecibirás alertas de tu estrategia aquí.');
+        res.json({ ok: true, chat_id: chatId, test_sent: sent });
+    } else {
+        res.json({ ok: false, message: 'No se encontró chat. Manda /start al bot en Telegram.' });
+    }
+});
+
+// POST /api/notify/telegram/test
+router.post('/telegram/test', async (req, res) => {
+    const sent = await sendTelegram('🔔 *Test de conexión*\nDeFi Dashboard conectado correctamente.\nLas alertas llegarán aquí.');
+    res.json({ ok: sent, message: sent ? 'Mensaje enviado' : 'Error: verifica token y chat_id' });
+});
+
+// POST /api/notify/check — Force immediate rule check
 router.post('/check', async (req, res) => {
     try {
         const result = await runCheck();
