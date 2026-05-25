@@ -52,6 +52,16 @@ if (process.env.SERVE_STATIC !== '0') {
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Dashboard API running on port ${PORT}`);
 
+    // Install Python deps if needed
+    const { execSync } = require('child_process');
+    try {
+        execSync('python3 -c "import pandas, numpy"', { stdio: 'ignore' });
+    } catch (_) {
+        console.log('[Setup] Installing Python dependencies...');
+        try { execSync('pip3 install --break-system-packages -q pandas numpy requests', { stdio: 'inherit', timeout: 120000 }); }
+        catch (e) { console.error('[Setup] Python install failed:', e.message); }
+    }
+
     const { startPeriodicSync } = require('./src/services/sync');
     startPeriodicSync(3600000); // sync every hour
 
