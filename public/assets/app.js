@@ -2598,35 +2598,15 @@ function renderTestVisual(d, el) {
         { label: 'SMA 20', val: d.sma20, color: '#06b6d4' },
     ].filter(s => s.val);
 
-    if (smas.length) {
-        const allVals = [...smas.map(s => s.val), d.price].filter(Boolean);
-        const min = Math.min(...allVals) * 0.998;
-        const max = Math.max(...allVals) * 1.002;
-        const range = max - min || 1;
-        const pct = v => ((v - min) / range * 100).toFixed(1);
-
-        html += '<div class="test-sma-visual">';
-        html += '<div class="test-sma-visual__title">Precio vs Medias M&oacute;viles</div>';
-        html += '<div class="test-sma-chart">';
-
-        for (const s of smas) {
-            const pos = pct(s.val);
-            html += `<div class="test-sma-line" style="bottom:${pos}%">
-                <span class="test-sma-line__label" style="color:${s.color}">${s.label}</span>
-                <div class="test-sma-line__bar" style="background:${s.color}"></div>
-                <span class="test-sma-line__val">$${fmtP(s.val)}</span>
-            </div>`;
-        }
-        // Price marker
-        const pPos = pct(d.price);
-        html += `<div class="test-sma-price" style="bottom:${pPos}%">
-            <span class="test-sma-price__dot"></span>
-            <span class="test-sma-price__val">$${fmtP(d.price)}</span>
+    // ── Candle chart with SMAs ──
+    if (d.chart?.length) {
+        html += '<div class="test-chart-wrap"><canvas id="testChart" width="800" height="400"></canvas></div>';
+        html += `<div class="test-sma-legend">
+            <span style="color:#06b6d4">SMA 20: $${fmtP(d.sma20)}</span>
+            <span style="color:#eab308">SMA 40: $${fmtP(d.sma40)}</span>
+            ${d.sma200 ? `<span style="color:#a78bfa">SMA 200: $${fmtP(d.sma200)}</span>` : ''}
+            <span style="color:${(d.distSma20||0) >= 0 ? 'var(--bull)' : 'var(--bear)'}">Dist SMA20: ${(d.distSma20||0) > 0 ? '+' : ''}${(d.distSma20||0).toFixed(2)}%</span>
         </div>`;
-
-        html += '</div>';
-        html += `<div class="test-sma-dist">Dist SMA20: <b style="color:${(d.distSma20||0) >= 0 ? 'var(--bull)' : 'var(--bear)'}">${(d.distSma20||0) > 0 ? '+' : ''}${(d.distSma20||0).toFixed(2)}%</b></div>`;
-        html += '</div>';
     }
 
     // ── TF Analysis cards ──
@@ -2711,6 +2691,127 @@ function renderTestVisual(d, el) {
     }
 
     el.innerHTML = html;
+
+    if (d.chart?.length) {
+        setTimeout(() => drawCandleChart(d), 50);
+    }
+}
+
+function drawCandleChart(d) {
+    const canvas = document.getElementById('testChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = 350 * dpr;
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = '350px';
+    ctx.scale(dpr, dpr);
+
+    const W = rect.width;
+    const H = 350;
+    const candles = d.chart;
+    const pad = { top: 10, bottom: 30, left: 55, right: 10 };
+    const cw = (W - pad.left - pad.right) / candles.length;
+    const bodyW = Math.max(2, cw * 0.6);
+
+    let allH = candles.map(c => c.h);
+    let allL = candles.map(c => c.l);
+    const sr = d.zones || {};
+    if (sr.resistances?.length) allH.push(sr.resistances[0].price);
+    if (sr.supports?.length) allL.push(sr.supports[0].price);
+    const minP = Math.min(...allL) * 0.998;
+    const maxP = Math.max(...allH) * 1.002;
+    const rangeP = maxP - minP || 1;
+    const y = v => pad.top + (1 - (v - minP) / rangeP) * (H - pad.top - pad.bottom);
+    const x = i => pad.left + i * cw + cw / 2;
+
+    ctx.fillStyle = '#0a0e1a';
+    ctx.fillRect(0, 0, W, H);
+
+    // Grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i < 5; i++) {
+        const gv = minP + rangeP * (i / 4);
+        const gy = y(gv);
+        ctx.beginPath(); ctx.moveTo(pad.left, gy); ctx.lineTo(W - pad.right, gy); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.font = '9px Inter, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('$' + Math.round(gv).toLocaleString(), pad.left - 4, gy + 3);
+    }
+
+    // S/R zones
+    if (sr.resistances) {
+        for (const r of sr.resistances) {
+            const ry = y(r.price);
+            ctx.strokeStyle = 'rgba(239,68,68,0.5)'; ctx.lineWidth = 1; ctx.setLineDash([4,3]);
+            ctx.beginPath(); ctx.moveTo(pad.left, ry); ctx.lineTo(W - pad.right, ry); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = 'rgba(239,68,68,0.7)'; ctx.font = '8px Inter'; ctx.textAlign = 'left';
+            ctx.fillText('R $' + Math.round(r.price).toLocaleString(), pad.left + 2, ry - 3);
+        }
+    }
+    if (sr.supports) {
+        for (const s of sr.supports) {
+            const sy = y(s.price);
+            ctx.strokeStyle = 'rgba(34,197,94,0.5)'; ctx.lineWidth = 1; ctx.setLineDash([4,3]);
+            ctx.beginPath(); ctx.moveTo(pad.left, sy); ctx.lineTo(W - pad.right, sy); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = 'rgba(34,197,94,0.7)'; ctx.font = '8px Inter'; ctx.textAlign = 'left';
+            ctx.fillText('S $' + Math.round(s.price).toLocaleString(), pad.left + 2, sy + 10);
+        }
+    }
+
+    // SMA lines
+    const smaLines = [
+        { key: 's200', color: '#a78bfa', w: 1.5 },
+        { key: 's40', color: '#eab308', w: 1.5 },
+        { key: 's20', color: '#06b6d4', w: 2 },
+    ];
+    for (const ln of smaLines) {
+        ctx.strokeStyle = ln.color; ctx.lineWidth = ln.w;
+        ctx.beginPath(); let started = false;
+        for (let i = 0; i < candles.length; i++) {
+            const v = candles[i][ln.key];
+            if (v == null) continue;
+            if (!started) { ctx.moveTo(x(i), y(v)); started = true; }
+            else ctx.lineTo(x(i), y(v));
+        }
+        ctx.stroke();
+    }
+
+    // Candles
+    for (let i = 0; i < candles.length; i++) {
+        const c = candles[i];
+        const bull = c.c >= c.o;
+        const color = bull ? '#22c55e' : '#ef4444';
+        const cx = x(i);
+        ctx.strokeStyle = color; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(cx, y(c.h)); ctx.lineTo(cx, y(c.l)); ctx.stroke();
+        const top = y(Math.max(c.o, c.c));
+        const bot = y(Math.min(c.o, c.c));
+        ctx.fillStyle = bull ? 'rgba(34,197,94,0.85)' : 'rgba(239,68,68,0.85)';
+        ctx.fillRect(cx - bodyW/2, top, bodyW, Math.max(1, bot - top));
+    }
+
+    // Volume
+    const maxVol = Math.max(...candles.map(c => c.v || 0));
+    for (let i = 0; i < candles.length; i++) {
+        const c = candles[i];
+        const vh = maxVol > 0 ? (c.v / maxVol) * 25 : 0;
+        ctx.fillStyle = c.c >= c.o ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)';
+        ctx.fillRect(x(i) - bodyW/2, H - pad.bottom - vh, bodyW, vh);
+    }
+
+    // Dates
+    ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '8px Inter'; ctx.textAlign = 'center';
+    const step = Math.max(1, Math.floor(candles.length / 8));
+    for (let i = 0; i < candles.length; i += step) {
+        ctx.fillText(candles[i].ts?.slice(5) || '', x(i), H - 5);
+    }
 }
 
 function renderTestRaw(d, el) {

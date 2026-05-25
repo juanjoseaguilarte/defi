@@ -1313,19 +1313,15 @@ input, select { font-family: var(--font); }
 .test-header__score { font-size: 0.75rem; color: var(--text-3); }
 
 /* Price vs SMA visual */
-.test-sma-visual {
-    background: rgba(255,255,255,0.02); border-radius: 12px; padding: 14px; margin-bottom: 12px;
+.test-chart-wrap {
+    background: #0a0e1a; border-radius: 12px; overflow: hidden; margin-bottom: 6px;
+    border: 1px solid rgba(255,255,255,0.06);
 }
-.test-sma-visual__title { font-size: 0.7rem; font-weight: 800; color: var(--text-2); margin-bottom: 10px; }
-.test-sma-chart { position: relative; height: 160px; border-left: 1px solid rgba(255,255,255,0.06); margin: 0 10px; }
-.test-sma-line { position: absolute; left: 0; right: 0; display: flex; align-items: center; gap: 6px; }
-.test-sma-line__label { font-size: 0.6rem; font-weight: 700; min-width: 50px; text-align: right; }
-.test-sma-line__bar { flex: 1; height: 1px; opacity: 0.5; }
-.test-sma-line__val { font-size: 0.6rem; color: var(--text-3); min-width: 65px; }
-.test-sma-price { position: absolute; left: 0; right: 0; display: flex; align-items: center; gap: 6px; }
-.test-sma-price__dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; margin-left: 48px; box-shadow: 0 0 6px rgba(255,255,255,0.5); }
-.test-sma-price__val { font-size: 0.7rem; font-weight: 800; color: var(--text-1); }
-.test-sma-dist { text-align: center; font-size: 0.7rem; color: var(--text-3); margin-top: 10px; }
+.test-chart-wrap canvas { display: block; width: 100%; }
+.test-sma-legend {
+    display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.65rem; font-weight: 700;
+    padding: 8px 14px; margin-bottom: 12px;
+}
 
 /* TF analysis cards */
 .test-tf-card {

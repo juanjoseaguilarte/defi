@@ -597,15 +597,41 @@ def run_daytrader(asset):
     elif score <= -7: d,conf = 'SHORT','alta'
     elif score <= -4: d,conf = 'SHORT','media'
 
-    # SMA200 from 1H
-    s200 = sma(df1h['close'], 200)
-    sma200_val = round(float(s200.dropna().iloc[-1]), 2) if s200.dropna().shape[0] else None
+    # Daily SMAs (reference, like ProRealTime)
+    tf_daily = analyze_tf(df_daily) if df_daily is not None and len(df_daily) > 45 else None
+    s200d = sma(df_daily['close'], 200) if df_daily is not None and len(df_daily) > 200 else pd.Series()
+    sma200_val = round(float(s200d.dropna().iloc[-1]), 2) if s200d.dropna().shape[0] else None
+    daily_sma20 = tf_daily['sma20'] if tf_daily else tf1h['sma20']
+    daily_sma40 = tf_daily['sma40'] if tf_daily else tf1h['sma40']
+    daily_dist = round((price - daily_sma20) / daily_sma20 * 100, 2) if daily_sma20 else 0
+
+    # Candle data for chart (last 60 daily candles)
+    chart_candles = []
+    if df_daily is not None:
+        s20c = sma(df_daily['close'], 20)
+        s40c = sma(df_daily['close'], 40)
+        s200c = sma(df_daily['close'], 200) if len(df_daily) > 200 else pd.Series([None]*len(df_daily))
+        tail = min(60, len(df_daily))
+        for i in range(-tail, 0):
+            idx = len(df_daily) + i
+            chart_candles.append({
+                'ts': str(df_daily['ts'].iloc[idx])[:10],
+                'o': round(df_daily['open'].iloc[idx], 2),
+                'h': round(df_daily['high'].iloc[idx], 2),
+                'l': round(df_daily['low'].iloc[idx], 2),
+                'c': round(df_daily['close'].iloc[idx], 2),
+                'v': round(df_daily['volume'].iloc[idx], 0),
+                's20': round(float(s20c.iloc[idx]), 2) if idx < len(s20c) and not pd.isna(s20c.iloc[idx]) else None,
+                's40': round(float(s40c.iloc[idx]), 2) if idx < len(s40c) and not pd.isna(s40c.iloc[idx]) else None,
+                's200': round(float(s200c.iloc[idx]), 2) if idx < len(s200c) and not pd.isna(s200c.iloc[idx]) else None,
+            })
 
     base = {
         'pair': pair, 'price': round(price, 2), 'asset': asset.upper(),
         'calculated_at': datetime.now(timezone.utc).isoformat(), 'engine': 'python',
-        'sma20': tf1h['sma20'], 'sma40': tf1h['sma40'], 'sma200': sma200_val,
-        'distSma20': tf1h['distPct'],
+        'sma20': daily_sma20, 'sma40': daily_sma40, 'sma200': sma200_val,
+        'distSma20': daily_dist,
+        'chart': chart_candles,
     }
 
     if not d:
