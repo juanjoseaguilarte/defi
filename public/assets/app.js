@@ -1993,81 +1993,6 @@ function renderDayTradeMulti(trades) {
     el.innerHTML = html;
     loadDtHistory();
     loadOpenTrades();
-    renderDtDebug(sorted);
-}
-
-function renderDtDebug(trades) {
-    const el = document.getElementById('dtDebug');
-    if (!el || !trades?.length) return;
-
-    let debugData = {};
-    for (const t of trades) {
-        const a = t.asset || t.pair?.replace('USDT','') || '?';
-        const d = {
-            asset: a,
-            price: t.price,
-            signal: t.signal,
-            score: t.score,
-            confidence: t.confidence,
-            engine: t.engine,
-            sma20: t.sma20, sma40: t.sma40, sma200: t.sma200,
-            distSma20: t.distSma20,
-        };
-        if (t.tp) { d.tp = t.tp; d.sl = t.sl; d.rr = t.rr; d.leverage = t.leverage; }
-        if (t.analysis) {
-            for (const [tf, data] of Object.entries(t.analysis)) {
-                if (!data) continue;
-                d[tf] = {
-                    bias: data.bias, momentum: data.momentum,
-                    sma20: data.sma20, slope: data.slope, distPct: data.distPct,
-                    rsi: data.rsi, macd_hist: data.macd_hist,
-                    adx: data.adx, plus_di: data.plus_di, minus_di: data.minus_di,
-                    bb_position: data.bb_position, stoch_k: data.stoch_k,
-                    ema9: data.ema9, ema21: data.ema21, atr: data.atr,
-                };
-            }
-        }
-        if (t.zones) {
-            d.resistencias = (t.zones.resistances || []).map(r => ({
-                precio: r.price, dist: r.distPct + '%',
-                fuerza: r.strength, toques: r.touches,
-                tfs: r.timeframes, credible: r.credible,
-                confluencia: r.confluence, flip: r.has_flip,
-            }));
-            d.soportes = (t.zones.supports || []).map(s => ({
-                precio: s.price, dist: s.distPct + '%',
-                fuerza: s.strength, toques: s.touches,
-                tfs: s.timeframes, credible: s.credible,
-                confluencia: s.confluence, flip: s.has_flip,
-            }));
-        }
-        if (t.reasons) d.razones = t.reasons;
-        if (t.indicators) d.indicadores = t.indicators;
-        debugData[a] = d;
-    }
-
-    const json = JSON.stringify(debugData, null, 2);
-
-    el.innerHTML = `<details class="dt-debug">
-        <summary class="dt-debug__toggle">Debug — Análisis completo</summary>
-        <div class="dt-debug__content">
-            <button class="dt-debug__copy" onclick="copyDebug()">Copiar</button>
-            <pre class="dt-debug__pre">${escapeHtml(json)}</pre>
-        </div>
-    </details>`;
-}
-
-function escapeHtml(s) {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-function copyDebug() {
-    const pre = document.querySelector('.dt-debug__pre');
-    if (!pre) return;
-    navigator.clipboard.writeText(pre.textContent).then(() => {
-        const btn = document.querySelector('.dt-debug__copy');
-        if (btn) { btn.textContent = 'Copiado'; setTimeout(() => btn.textContent = 'Copiar', 2000); }
-    });
 }
 
 async function loadDtHistory() {
@@ -2621,6 +2546,191 @@ function renderSingleTrade(d) {
 
     html += '</details>';
     return html;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TEST PAGE
+// ═══════════════════════════════════════════════════════════════
+
+async function runTestAnalysis() {
+    const asset = document.getElementById('testAsset').value;
+    const btn = document.getElementById('testAnalyzeBtn');
+    const visual = document.getElementById('testVisual');
+    const raw = document.getElementById('testRaw');
+    const loading = document.getElementById('testLoading');
+
+    btn.disabled = true; btn.textContent = 'Analizando...';
+    visual.innerHTML = ''; raw.innerHTML = '';
+    loading.style.display = 'flex';
+
+    try {
+        const resp = await fetch(`${APP_BASE}/api/daytrader?asset=${asset}`);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const d = await resp.json();
+        renderTestVisual(d, visual);
+        renderTestRaw(d, raw);
+    } catch (e) {
+        visual.innerHTML = `<div class="strategy-warnings"><div class="strategy-warnings__item">${e.message}</div></div>`;
+    } finally {
+        loading.style.display = 'none';
+        btn.disabled = false; btn.textContent = 'Analizar';
+    }
+}
+
+function renderTestVisual(d, el) {
+    const a = d.asset || d.pair?.replace('USDT','') || '?';
+    let html = '';
+
+    // ── Header ──
+    const dirColor = d.signal === 'LONG' ? 'var(--bull)' : d.signal === 'SHORT' ? 'var(--bear)' : 'var(--text-3)';
+    html += `<div class="test-header">
+        <span class="test-header__asset">${a}</span>
+        <span class="test-header__price">$${fmtP(d.price)}</span>
+        <span class="test-header__signal" style="color:${dirColor}">${d.signal || '—'}</span>
+        <span class="test-header__score">Score: ${d.score || 0}</span>
+        <span class="dt-engine-badge dt-engine-badge--${d.engine === 'python' ? 'py' : 'js'}">${d.engine || '?'}</span>
+    </div>`;
+
+    // ── Price vs SMAs visual ──
+    const smas = [
+        { label: 'SMA 200', val: d.sma200, color: '#a78bfa' },
+        { label: 'SMA 40', val: d.sma40, color: '#eab308' },
+        { label: 'SMA 20', val: d.sma20, color: '#06b6d4' },
+    ].filter(s => s.val);
+
+    if (smas.length) {
+        const allVals = [...smas.map(s => s.val), d.price].filter(Boolean);
+        const min = Math.min(...allVals) * 0.998;
+        const max = Math.max(...allVals) * 1.002;
+        const range = max - min || 1;
+        const pct = v => ((v - min) / range * 100).toFixed(1);
+
+        html += '<div class="test-sma-visual">';
+        html += '<div class="test-sma-visual__title">Precio vs Medias M&oacute;viles</div>';
+        html += '<div class="test-sma-chart">';
+
+        for (const s of smas) {
+            const pos = pct(s.val);
+            html += `<div class="test-sma-line" style="bottom:${pos}%">
+                <span class="test-sma-line__label" style="color:${s.color}">${s.label}</span>
+                <div class="test-sma-line__bar" style="background:${s.color}"></div>
+                <span class="test-sma-line__val">$${fmtP(s.val)}</span>
+            </div>`;
+        }
+        // Price marker
+        const pPos = pct(d.price);
+        html += `<div class="test-sma-price" style="bottom:${pPos}%">
+            <span class="test-sma-price__dot"></span>
+            <span class="test-sma-price__val">$${fmtP(d.price)}</span>
+        </div>`;
+
+        html += '</div>';
+        html += `<div class="test-sma-dist">Dist SMA20: <b style="color:${(d.distSma20||0) >= 0 ? 'var(--bull)' : 'var(--bear)'}">${(d.distSma20||0) > 0 ? '+' : ''}${(d.distSma20||0).toFixed(2)}%</b></div>`;
+        html += '</div>';
+    }
+
+    // ── TF Analysis cards ──
+    const tfMap = { tf6h: '6H', tf1h: '1H', tf15m: '15M' };
+    const analysis = d.analysis || {};
+    for (const [key, label] of Object.entries(tfMap)) {
+        const tf = analysis[key];
+        if (!tf) continue;
+
+        const biasColors = { bullish: 'var(--bull)', weakBullish: 'rgba(34,197,94,0.6)', neutral: 'var(--text-3)', weakBearish: 'rgba(239,68,68,0.6)', bearish: 'var(--bear)' };
+        const biasLabels = { bullish: 'ALCISTA', weakBullish: 'ALCISTA DEBIL', neutral: 'LATERAL', weakBearish: 'BAJISTA DEBIL', bearish: 'BAJISTA' };
+        const b = tf.bias || 'neutral';
+
+        html += `<div class="test-tf-card">
+            <div class="test-tf-card__header">
+                <span class="test-tf-card__label">${label}</span>
+                <span class="test-tf-card__bias" style="color:${biasColors[b]}">${biasLabels[b] || b}</span>
+                <span class="test-tf-card__trend">${tf.trend === 'up' ? 'EMA9>21' : 'EMA9<21'}</span>
+            </div>
+            <div class="test-tf-grid">
+                <div class="test-ind"><span class="test-ind__label">SMA20</span><span>$${fmtP(tf.sma20)}</span></div>
+                <div class="test-ind"><span class="test-ind__label">Pendiente</span><span style="color:${(tf.slope||0) > 0 ? 'var(--bull)' : 'var(--bear)'}">${(tf.slope||0) > 0 ? '+' : ''}${(tf.slope||0).toFixed(2)}%</span></div>
+                <div class="test-ind"><span class="test-ind__label">RSI</span><span style="color:${tf.rsi < 30 ? 'var(--bull)' : tf.rsi > 70 ? 'var(--bear)' : 'var(--text-2)'}">${(tf.rsi||0).toFixed(0)}</span></div>
+                <div class="test-ind"><span class="test-ind__label">MACD</span><span style="color:${(tf.macd_hist||0) > 0 ? 'var(--bull)' : 'var(--bear)'}">${(tf.macd_hist||0) > 0 ? '+' : ''}${(tf.macd_hist||0).toFixed(2)}</span></div>
+                <div class="test-ind"><span class="test-ind__label">ADX</span><span style="color:${(tf.adx||0) > 25 ? 'var(--accent)' : 'var(--text-3)'}">${(tf.adx||0).toFixed(0)}</span></div>
+                <div class="test-ind"><span class="test-ind__label">BB pos</span><span>${(tf.bb_position||50).toFixed(0)}%</span></div>
+                <div class="test-ind"><span class="test-ind__label">Stoch K</span><span style="color:${(tf.stoch_k||50) < 20 ? 'var(--bull)' : (tf.stoch_k||50) > 80 ? 'var(--bear)' : 'var(--text-2)'}">${(tf.stoch_k||0).toFixed(0)}</span></div>
+                <div class="test-ind"><span class="test-ind__label">ATR</span><span>$${fmtP(tf.atr)}</span></div>
+                <div class="test-ind"><span class="test-ind__label">EMA9</span><span>$${fmtP(tf.ema9)}</span></div>
+                <div class="test-ind"><span class="test-ind__label">EMA21</span><span>$${fmtP(tf.ema21)}</span></div>
+                <div class="test-ind"><span class="test-ind__label">Dist%</span><span>${(tf.distPct||0) > 0 ? '+' : ''}${(tf.distPct||0).toFixed(2)}%</span></div>
+                <div class="test-ind"><span class="test-ind__label">Momento</span><span>${tf.momentum || '—'}</span></div>
+            </div>
+        </div>`;
+    }
+
+    // ── S/R Zones visual ──
+    if (d.zones) {
+        const res = d.zones.resistances || [];
+        const sup = d.zones.supports || [];
+        html += '<div class="test-sr"><div class="test-sr__title">Zonas S/R — Power 4</div>';
+
+        for (const r of res) {
+            const tags = [];
+            if (r.confluence) tags.push('confluencia');
+            if (r.credible) tags.push('credible');
+            if (r.has_flip) tags.push('S->R');
+            if (r.touches > 1) tags.push(r.touches + 'x');
+            html += `<div class="test-sr__level test-sr__level--r">
+                <span class="test-sr__bar" style="width:${Math.min(100, (r.strength||1) * 8)}%;background:rgba(239,68,68,0.3)"></span>
+                <span class="test-sr__price">R $${fmtP(r.price)}</span>
+                <span class="test-sr__dist">+${(r.distPct||0).toFixed(2)}%</span>
+                <span class="test-sr__meta">${tags.join(' · ')} | fuerza ${(r.strength||0).toFixed(1)} | TFs: ${(r.timeframes||[]).join(',')}</span>
+            </div>`;
+        }
+
+        html += `<div class="test-sr__current">$${fmtP(d.price)}</div>`;
+
+        for (const s of sup) {
+            const tags = [];
+            if (s.confluence) tags.push('confluencia');
+            if (s.credible) tags.push('credible');
+            if (s.has_flip) tags.push('R->S');
+            if (s.touches > 1) tags.push(s.touches + 'x');
+            html += `<div class="test-sr__level test-sr__level--s">
+                <span class="test-sr__bar" style="width:${Math.min(100, (s.strength||1) * 8)}%;background:rgba(34,197,94,0.3)"></span>
+                <span class="test-sr__price">S $${fmtP(s.price)}</span>
+                <span class="test-sr__dist">-${(s.distPct||0).toFixed(2)}%</span>
+                <span class="test-sr__meta">${tags.join(' · ')} | fuerza ${(s.strength||0).toFixed(1)} | TFs: ${(s.timeframes||[]).join(',')}</span>
+            </div>`;
+        }
+        html += '</div>';
+    }
+
+    // ── Reasons ──
+    if (d.reasons?.length) {
+        html += '<div class="test-reasons"><div class="test-reasons__title">Scoring</div>';
+        for (const r of d.reasons) {
+            html += `<div class="test-reasons__item">${r}</div>`;
+        }
+        html += '</div>';
+    }
+
+    el.innerHTML = html;
+}
+
+function renderTestRaw(d, el) {
+    const json = JSON.stringify(d, null, 2);
+    el.innerHTML = `<div class="test-raw">
+        <div class="test-raw__header">
+            <span class="test-raw__title">JSON completo</span>
+            <button class="test-raw__copy" onclick="copyTestRaw()">Copiar</button>
+        </div>
+        <pre class="test-raw__pre">${json.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
+    </div>`;
+}
+
+function copyTestRaw() {
+    const pre = document.querySelector('.test-raw__pre');
+    if (!pre) return;
+    navigator.clipboard.writeText(pre.textContent).then(() => {
+        const btn = document.querySelector('.test-raw__copy');
+        if (btn) { btn.textContent = 'Copiado'; setTimeout(() => btn.textContent = 'Copiar', 2000); }
+    });
 }
 
 checkVersion();

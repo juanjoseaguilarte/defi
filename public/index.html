@@ -157,6 +157,26 @@
             </div>
         </div>
 
+        <!-- TEST / DEBUG -->
+        <div id="page-test" class="page-view" style="display:none">
+            <div class="section-header">
+                <h2 class="section-title">Test</h2>
+            </div>
+            <div class="strategy-input-wrap">
+                <div class="dt-asset-selector">
+                    <select class="dt-enter-input" id="testAsset" style="flex:1">
+                        <option value="BTC">BTC</option>
+                        <option value="ETH">ETH</option>
+                        <option value="SOL">SOL</option>
+                    </select>
+                    <button class="btn-primary" style="padding:10px 24px;flex-shrink:0" id="testAnalyzeBtn" onclick="runTestAnalysis()">Analizar</button>
+                </div>
+            </div>
+            <div id="testLoading" style="display:none" class="strategy-empty"><div class="spinner spinner--sm"></div><div>Analizando...</div></div>
+            <div id="testVisual"></div>
+            <div id="testRaw"></div>
+        </div>
+
         <!-- ESTRATEGIA -->
         <div id="page-strategy" class="page-view" style="display:none">
             <div class="section-header">
@@ -290,7 +310,6 @@
             </div>
             <div id="dtResult"></div>
             <div id="dtLoading" style="display:none" class="strategy-empty"><div class="spinner spinner--sm"></div><div>Analizando timeframes...</div></div>
-            <div id="dtDebug"></div>
         </div>
 
         <!-- AJUSTES -->
@@ -337,6 +356,10 @@
             <button class="nav-item" data-page="signals">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
                 Señales
+            </button>
+            <button class="nav-item" data-page="test">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></svg>
+                Test
             </button>
             <button class="nav-item" data-page="strategy">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
