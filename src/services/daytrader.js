@@ -205,10 +205,34 @@ function generateTrade(price, asset, tf6h, tf1h, tf15m, zones) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// MAIN — Analyze and generate trade
+// MAIN — Call Python analyzer
 // ═══════════════════════════════════════════════════════════════
 
+const { execFile } = require('child_process');
+const pythonScript = require('path').join(__dirname, '../../python/analyzer.py');
+
+function runPython(asset) {
+    return new Promise((resolve, reject) => {
+        execFile('python3', [pythonScript, asset], { timeout: 30000 }, (err, stdout, stderr) => {
+            if (err) return reject(new Error(stderr || err.message));
+            try { resolve(JSON.parse(stdout)); }
+            catch (_) { reject(new Error('Invalid JSON from Python: ' + stdout.slice(0, 200))); }
+        });
+    });
+}
+
 async function getDailyTrade(asset) {
+    try {
+        const result = await runPython(asset);
+        if (result.signal === 'ERROR') throw new Error(result.error);
+        return result;
+    } catch (pyErr) {
+        console.error('[DayTrader] Python failed, fallback to JS:', pyErr.message);
+        return getDailyTradeJS(asset);
+    }
+}
+
+async function getDailyTradeJS(asset) {
     const pair = asset + 'USDT';
     const prices = await fetchAllPrices();
     const price = prices[pair];
@@ -233,6 +257,7 @@ async function getDailyTrade(asset) {
         pair,
         price,
         calculated_at: new Date().toISOString(),
+        engine: 'js-fallback',
     };
 }
 
