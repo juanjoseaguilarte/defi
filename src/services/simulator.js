@@ -2,7 +2,6 @@ const { getDb } = require('../../db/init');
 const { sma, smaSlope, detectTrainTracks } = require('./ranges');
 
 const AAVE_BORROW_APY = { ETH: 3.2, BTC: 1.5 };
-const AAVE_LTV_USDC = 0.80;
 const LP_FEE_DAILY = 25 / 100 / 365;
 
 const COOLDOWN_DAYS = 5;
@@ -34,7 +33,8 @@ function emptyPos() {
         aave_supply: 0, aave_borrow: 0,
         short_margin: 0, short_size: 0, short_entry: 0,
         lp_amount: 0, lp_entry: 0, lp_range_low: 0, lp_range_high: 0,
-        lp_mode: null, // 'bull_ride' | 'bear_protect' | 'neutral'
+        lp_mode: null, // 'bull_ride' | 'neutral'
+        lp_remounts: 0,
     };
 }
 
@@ -56,7 +56,7 @@ function closeAll(pos, price, date, log) {
     }
     if (pos.lp_amount > 0) {
         const lpVal = getLpValue(pos, price);
-        log.push({ date, type: 'close', message: `Cerrar LP (${pos.lp_mode}): valor $${lpVal.toFixed(0)}` });
+        log.push({ date, type: 'close', message: `Cerrar LP (${pos.lp_mode}): valor $${lpVal.toFixed(0)}, remontadas: ${pos.lp_remounts}` });
         recovered += lpVal;
     }
     if (pos.aave_borrow > 0) recovered -= pos.aave_borrow;
@@ -74,107 +74,116 @@ function closePerps(pos, price, date, log) {
     return recovered;
 }
 
-// LP value based on where price is relative to range
+function closeLp(pos, price, date, log) {
+    let recovered = 0;
+    if (pos.lp_amount > 0) {
+        const lpVal = getLpValue(pos, price);
+        log.push({ date, type: 'close', message: `Cerrar LP: valor $${lpVal.toFixed(0)}` });
+        recovered += lpVal;
+        pos.lp_amount = 0; pos.lp_mode = null;
+    }
+    if (pos.aave_borrow > 0) {
+        recovered -= pos.aave_borrow;
+        pos.aave_borrow = 0;
+    }
+    return recovered;
+}
+
 function getLpValue(pos, price) {
     if (pos.lp_amount <= 0) return 0;
     const { lp_amount, lp_range_low, lp_range_high, lp_entry } = pos;
 
     if (price >= lp_range_high) {
-        // Price above range: 100% USDC — you "sold" at the top
-        return lp_amount; // preserved in USDC
+        // Above range: 100% USDC — sold everything at top
+        return lp_amount;
     }
     if (price <= lp_range_low) {
-        // Price below range: 100% volatile asset
-        // Value = lp_amount * (price / lp_entry) approximately
+        // Below range: 100% volatile — value follows price
         return lp_amount * (price / lp_entry);
     }
-    // In range: mix of both, subject to IL
+    // In range: IL proportional to price movement
     const il = lp_amount * Math.abs(price - lp_entry) / lp_entry * 0.3;
     return Math.max(0, lp_amount - il);
 }
 
 // ═══════════════════════════════════════════════════════════════
-// STRATEGY OPEN — completely different per phase
+// E4 BAJISTA: Todo en stables + SHORT. SIN LP.
+// La protección a USDC es: estar en USDC. No arriesgar en LP.
+// ═══════════════════════════════════════════════════════════════
+// E2 ALCISTA: LP apalancado via Revert.
+// Rango -15%/+30%. Sale por arriba → take profit → remontar.
+// Sale por abajo → cerrar LP (tendencia terminando).
 // ═══════════════════════════════════════════════════════════════
 
 function openStrategy(phase, cash, price, asset, pos, date, log) {
     let allocated = 0;
 
     if (phase === 'bear') {
-        // E4: SHORT + LP con rango POR ENCIMA del precio (auto-exit a USDC)
-        // Si cae → ya estás en USDC. Si sube → vendes ETH por USDC.
-        const stableAmt = Math.floor(cash * 0.60);
+        // E4: 100% defensivo. Stables en Aave + SHORT agresivo. SIN LP.
+        const stableAmt = Math.floor(cash * 0.75);
         pos.aave_supply = stableAmt;
         allocated += stableAmt;
 
-        // Short para beneficiarse de la caída
-        const sm = Math.floor(cash * 0.15);
+        const sm = Math.floor(cash * 0.20);
         pos.short_margin = sm; pos.short_size = sm * SHORT_LEV; pos.short_entry = price;
         allocated += sm;
 
-        // LP protector: rango por encima del precio actual
-        // Si el precio sube al rango → empiezas a vender ETH por USDC (auto-exit)
-        // Si el precio baja → no estás en el LP, tu dinero está en USDC
-        const lpAmt = Math.floor(cash * 0.20);
-        pos.lp_amount = lpAmt; pos.lp_entry = price;
-        pos.lp_range_low = price * 1.00; // desde el precio actual
-        pos.lp_range_high = price * 1.15; // hasta +15%
-        pos.lp_mode = 'bear_protect';
-        allocated += lpAmt;
-
-        log.push({ date, type: 'open', message: `E4 BAJISTA: Supply $${stableAmt} + SHORT x${SHORT_LEV} $${sm} (entrada $${price.toFixed(0)}) + LP protector $${lpAmt} rango $${pos.lp_range_low.toFixed(0)}-$${pos.lp_range_high.toFixed(0)} (auto-exit a USDC si sube)` });
+        log.push({ date, type: 'open', message: `E4 BAJISTA: Supply USDC $${stableAmt} (3.5% APY) + SHORT x${SHORT_LEV} $${sm} (entrada $${price.toFixed(0)}). Sin LP — 100% protegido en USDC.` });
 
     } else if (phase === 'bull') {
-        // E2: LP apalancado + rango amplio hacia arriba
-        // Cuando sale por arriba → 100% USDC = take profit → remontar más arriba
+        // E2: LP apalancado. Rango amplio hacia arriba.
+        // Take profit automático cuando sale por arriba → remontar más arriba.
         pos.aave_supply = cash;
         const borrow = Math.floor(cash * 0.55);
         pos.aave_borrow = borrow;
 
         const lpAmt = borrow;
         pos.lp_amount = lpAmt; pos.lp_entry = price;
-        pos.lp_range_low = price * 0.85;  // soporte: -15%
-        pos.lp_range_high = price * 1.30; // resistencia: +30%
+        pos.lp_range_low = price * 0.85;
+        pos.lp_range_high = price * 1.30;
         pos.lp_mode = 'bull_ride';
+        pos.lp_remounts = 0;
         allocated = cash;
 
-        log.push({ date, type: 'open', message: `E2 ALCISTA: Colateral $${cash.toFixed(0)}, Borrow $${borrow}, LP $${lpAmt} rango $${pos.lp_range_low.toFixed(0)}-$${pos.lp_range_high.toFixed(0)} (take profit si sale por arriba). Apalancado via Revert.` });
+        log.push({ date, type: 'open', message: `E2 ALCISTA: Colateral $${cash.toFixed(0)}, Borrow $${borrow}, LP $${lpAmt} rango $${pos.lp_range_low.toFixed(0)}-$${pos.lp_range_high.toFixed(0)}. Apalancado Revert. Take profit si sale por arriba → remontar.` });
 
     } else if (phase === 'accumulation') {
-        // E1: LP delta neutral con rango estrecho + short pequeño
+        // E1: LP delta neutral estrecho + short hedge
         pos.aave_supply = cash;
         const borrow = Math.floor(cash * 0.40);
-        pos.aave_borrow = borrow;
-
-        const hedgeAmt = Math.floor(borrow * 0.08);
-        const lpAmt = borrow - hedgeAmt;
-        pos.lp_amount = lpAmt; pos.lp_entry = price;
-        pos.lp_range_low = price * 0.88;
-        pos.lp_range_high = price * 1.12;
-        pos.lp_mode = 'neutral';
-
-        pos.short_margin = hedgeAmt; pos.short_size = hedgeAmt * SHORT_LEV; pos.short_entry = price;
-        allocated = cash;
-
-        log.push({ date, type: 'open', message: `E1 ACUMULACIÓN: Colateral $${cash.toFixed(0)}, Borrow $${borrow}, LP $${lpAmt} rango $${pos.lp_range_low.toFixed(0)}-$${pos.lp_range_high.toFixed(0)}, SHORT hedge x${SHORT_LEV} $${hedgeAmt}` });
-
-    } else if (phase === 'distribution') {
-        // E3: LP con rango sesgado abajo (auto-exit a USDC si sube) + short pequeño
-        pos.aave_supply = cash;
-        const borrow = Math.floor(cash * 0.30);
         pos.aave_borrow = borrow;
 
         const hedgeAmt = Math.floor(borrow * 0.10);
         const lpAmt = borrow - hedgeAmt;
         pos.lp_amount = lpAmt; pos.lp_entry = price;
-        pos.lp_range_low = price * 0.85;
-        pos.lp_range_high = price * 1.10; // rango corto arriba, si sube → USDC
-        pos.lp_mode = 'bear_protect';
+        pos.lp_range_low = price * 0.88;
+        pos.lp_range_high = price * 1.12;
+        pos.lp_mode = 'neutral';
+        pos.lp_remounts = 0;
 
         pos.short_margin = hedgeAmt; pos.short_size = hedgeAmt * SHORT_LEV; pos.short_entry = price;
         allocated = cash;
 
-        log.push({ date, type: 'open', message: `E3 DISTRIBUCIÓN: Colateral $${cash.toFixed(0)}, Borrow $${borrow}, LP $${lpAmt} rango $${pos.lp_range_low.toFixed(0)}-$${pos.lp_range_high.toFixed(0)} (auto-exit USDC), SHORT hedge x${SHORT_LEV} $${hedgeAmt}` });
+        log.push({ date, type: 'open', message: `E1 ACUMULACIÓN: Colateral $${cash.toFixed(0)}, Borrow $${borrow}, LP $${lpAmt} rango ±12%, SHORT hedge x${SHORT_LEV} $${hedgeAmt}` });
+
+    } else if (phase === 'distribution') {
+        // E3: LP conservador rango estrecho + short hedge mayor
+        pos.aave_supply = cash;
+        const borrow = Math.floor(cash * 0.30);
+        pos.aave_borrow = borrow;
+
+        const hedgeAmt = Math.floor(borrow * 0.15);
+        const lpAmt = borrow - hedgeAmt;
+        pos.lp_amount = lpAmt; pos.lp_entry = price;
+        pos.lp_range_low = price * 0.90;
+        pos.lp_range_high = price * 1.10;
+        pos.lp_mode = 'neutral';
+        pos.lp_remounts = 0;
+
+        pos.short_margin = hedgeAmt; pos.short_size = hedgeAmt * SHORT_LEV; pos.short_entry = price;
+        allocated = cash;
+
+        log.push({ date, type: 'open', message: `E3 DISTRIBUCIÓN: Colateral $${cash.toFixed(0)}, Borrow $${borrow}, LP $${lpAmt} rango ±10%, SHORT hedge x${SHORT_LEV} $${hedgeAmt}` });
     }
     return allocated;
 }
@@ -202,41 +211,35 @@ function runBacktest(candles, amount, asset) {
 
         if (strategyActive) daysSinceOpen++;
 
-        // ── LP auto-exit detection ──
+        // ── LP auto-exit detection (only for bull_ride mode) ──
         if (strategyActive && pos.lp_amount > 0) {
             if (pos.lp_mode === 'bull_ride' && price > pos.lp_range_high) {
-                // Bull LP: price exited top → take profit (100% USDC)
-                const lpVal = pos.lp_amount; // 100% USDC at exit
-                log.push({ date, type: 'lp_exit_top', message: `LP TAKE PROFIT: precio $${price.toFixed(0)} salió por arriba del rango ($${pos.lp_range_high.toFixed(0)}). LP = 100% USDC = $${lpVal.toFixed(0)}. Remontando LP más arriba.` });
-                // Remount LP higher
+                // ★ TAKE PROFIT: price exited top → 100% USDC → remontar
+                const lpVal = pos.lp_amount;
+                pos.lp_remounts++;
+                log.push({ date, type: 'lp_exit_top', message: `LP TAKE PROFIT #${pos.lp_remounts}: precio $${price.toFixed(0)} salió por arriba ($${pos.lp_range_high.toFixed(0)}). LP = 100% USDC = $${lpVal.toFixed(0)}` });
                 pos.lp_entry = price;
                 pos.lp_range_low = price * 0.85;
                 pos.lp_range_high = price * 1.30;
-                log.push({ date, type: 'lp_remount', message: `LP remontado: nuevo rango $${pos.lp_range_low.toFixed(0)}-$${pos.lp_range_high.toFixed(0)}. Coste rebalanceo: $${(lpVal * 0.005).toFixed(0)}` });
-                cash -= lpVal * 0.005; // small rebalance cost
+                const cost = lpVal * 0.005;
+                cash -= cost;
+                log.push({ date, type: 'lp_remount', message: `Remontado rango $${pos.lp_range_low.toFixed(0)}-$${pos.lp_range_high.toFixed(0)}. Coste: $${cost.toFixed(0)}` });
 
             } else if (pos.lp_mode === 'bull_ride' && price < pos.lp_range_low) {
-                // Bull LP: price exited bottom → trend might be ending
+                // ★ EXIT BOTTOM: tendencia terminando → desmontar LP → a stables
                 const lpVal = getLpValue(pos, price);
-                log.push({ date, type: 'lp_exit_bottom', message: `LP EXIT BOTTOM: precio $${price.toFixed(0)} cayó bajo el rango ($${pos.lp_range_low.toFixed(0)}). LP = 100% ${asset} = $${lpVal.toFixed(0)}. Cerrando LP.` });
-                cash += lpVal;
-                pos.lp_amount = 0; pos.lp_mode = null;
-
-            } else if (pos.lp_mode === 'bear_protect' && price > pos.lp_range_high) {
-                // Bear LP: price went above range → auto-converted to USDC
-                log.push({ date, type: 'lp_auto_usdc', message: `LP AUTO-EXIT USDC: precio $${price.toFixed(0)} superó rango ($${pos.lp_range_high.toFixed(0)}). LP convertido a 100% USDC = $${pos.lp_amount.toFixed(0)}. Protección exitosa.` });
-                cash += pos.lp_amount;
-                pos.lp_amount = 0; pos.lp_mode = null;
+                log.push({ date, type: 'lp_exit_bottom', message: `LP DESMONTADO: precio $${price.toFixed(0)} cayó bajo rango ($${pos.lp_range_low.toFixed(0)}). Valor: $${lpVal.toFixed(0)}. Tendencia acabando.` });
+                cash += closeLp(pos, price, date, []);
 
             } else if (pos.lp_mode === 'neutral' && (price < pos.lp_range_low || price > pos.lp_range_high)) {
-                // Neutral LP: rebalance
+                // Neutral LP out of range → rebalance
                 const lpVal = getLpValue(pos, price);
                 const cost = lpVal * 0.01;
                 cash -= cost;
                 pos.lp_entry = price;
-                pos.lp_range_low = price * 0.88;
-                pos.lp_range_high = price * 1.12;
-                log.push({ date, type: 'lp_rebalance', message: `LP neutral rebalanceado. Coste: $${cost.toFixed(0)}` });
+                pos.lp_range_low = price * (confirmedPhase === 'distribution' ? 0.90 : 0.88);
+                pos.lp_range_high = price * (confirmedPhase === 'distribution' ? 1.10 : 1.12);
+                log.push({ date, type: 'lp_rebalance', message: `LP rebalanceado a $${price.toFixed(0)}. Coste: $${cost.toFixed(0)}` });
             }
 
             // Daily LP fees (only if price is in range)
@@ -275,6 +278,7 @@ function runBacktest(candles, amount, asset) {
                 const major = isMajorChange(prevPhase, newPhase);
 
                 if (strategyActive && major) {
+                    // ── CAMBIO MAYOR: cerrar todo, reabrir ──
                     cash += closeAll(pos, price, date, log);
                     pos = emptyPos();
                     log.push({ date, type: 'phase_change', message: `CAMBIO MAYOR: ${prevPhase} → ${newPhase}. Cash: $${cash.toFixed(0)}` });
@@ -282,30 +286,59 @@ function runBacktest(candles, amount, asset) {
                     cash -= openStrategy(newPhase, cash, price, asset, pos, date, log);
 
                 } else if (strategyActive && !major) {
-                    // Minor: close perps, adjust hedge, keep LP
+                    // ── CAMBIO MENOR: ajustar hedges, mantener LP si hay ──
                     cash += closePerps(pos, price, date, log);
+                    const prevConfirmed = confirmedPhase;
                     confirmedPhase = newPhase;
 
-                    if (newPhase === 'bear' || newPhase === 'distribution') {
-                        const hm = Math.floor(cash * (newPhase === 'bear' ? 0.08 : 0.04));
+                    // Si pasamos a bear/distribution desde bull con LP activo → desmontar LP
+                    if ((newPhase === 'bear') && pos.lp_amount > 0 && pos.lp_mode === 'bull_ride') {
+                        const lpVal = getLpValue(pos, price);
+                        log.push({ date, type: 'phase_adjust', message: `${prevConfirmed} → E4: Desmontando LP bull. Valor: $${lpVal.toFixed(0)}` });
+                        cash += closeLp(pos, price, date, []);
+                        // Abrir SHORT E4
+                        const sm = Math.floor(cash * 0.15);
+                        if (sm > 30) {
+                            pos.short_margin = sm; pos.short_size = sm * SHORT_LEV; pos.short_entry = price;
+                            cash -= sm;
+                            log.push({ date, type: 'phase_adjust', message: `→ SHORT x${SHORT_LEV} $${sm} (entrada $${price.toFixed(0)})` });
+                        }
+                    } else if (newPhase === 'bear' || newPhase === 'distribution') {
+                        const hm = Math.floor(cash * (newPhase === 'bear' ? 0.10 : 0.05));
                         if (hm > 30) {
                             pos.short_margin = hm; pos.short_size = hm * SHORT_LEV; pos.short_entry = price;
                             cash -= hm;
-                            log.push({ date, type: 'phase_adjust', message: `${prevPhase} → ${newPhase}: SHORT x${SHORT_LEV} $${hm} (protege LP)` });
+                            log.push({ date, type: 'phase_adjust', message: `${prevConfirmed} → ${newPhase}: SHORT x${SHORT_LEV} $${hm}` });
                         } else {
-                            log.push({ date, type: 'phase_adjust', message: `${prevPhase} → ${newPhase}: LP mantenido, hedge bajo.` });
+                            log.push({ date, type: 'phase_adjust', message: `${prevConfirmed} → ${newPhase}: mantenido.` });
                         }
                     } else if (newPhase === 'accumulation') {
                         const hm = Math.floor(cash * 0.03);
                         if (hm > 30) {
                             pos.short_margin = hm; pos.short_size = hm * SHORT_LEV; pos.short_entry = price;
                             cash -= hm;
-                            log.push({ date, type: 'phase_adjust', message: `${prevPhase} → E1: SHORT delta-neutral x${SHORT_LEV} $${hm}` });
+                            log.push({ date, type: 'phase_adjust', message: `${prevConfirmed} → E1: SHORT delta-neutral x${SHORT_LEV} $${hm}` });
                         } else {
-                            log.push({ date, type: 'phase_adjust', message: `${prevPhase} → E1: LP mantenido.` });
+                            log.push({ date, type: 'phase_adjust', message: `${prevConfirmed} → E1: mantenido.` });
                         }
                     } else if (newPhase === 'bull') {
-                        log.push({ date, type: 'phase_adjust', message: `${prevPhase} → E2: LP mantenido, sin hedge direccional.` });
+                        // Si no hay LP activo → montar LP bull
+                        if (pos.lp_amount <= 0 && cash > 100) {
+                            const borrow = Math.floor(pos.aave_supply * 0.55);
+                            if (borrow > 100) {
+                                pos.aave_borrow = borrow;
+                                pos.lp_amount = borrow; pos.lp_entry = price;
+                                pos.lp_range_low = price * 0.85;
+                                pos.lp_range_high = price * 1.30;
+                                pos.lp_mode = 'bull_ride';
+                                pos.lp_remounts = 0;
+                                log.push({ date, type: 'phase_adjust', message: `${prevConfirmed} → E2: Montando LP bull $${borrow} rango $${pos.lp_range_low.toFixed(0)}-$${pos.lp_range_high.toFixed(0)}` });
+                            } else {
+                                log.push({ date, type: 'phase_adjust', message: `${prevConfirmed} → E2: sin capital para LP.` });
+                            }
+                        } else {
+                            log.push({ date, type: 'phase_adjust', message: `${prevConfirmed} → E2: LP mantenido.` });
+                        }
                     }
                 } else {
                     confirmedPhase = newPhase; strategyActive = true; daysSinceOpen = 0;
