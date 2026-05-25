@@ -2498,14 +2498,21 @@ function renderSingleTrade(d) {
     }
     html += '</div>';
 
-    // S/R Zones
+    // S/R Zones (Power 4)
     if (d.zones) {
         html += '<div class="dt-zones">';
-        html += '<div class="dt-zones__title">Zonas S/R (1H)</div>';
+        html += '<div class="dt-zones__title">Zonas S/R — Power 4</div>';
         if (d.zones.resistances?.length) {
             html += '<div class="dt-zones__section"><span class="dt-zones__label" style="color:var(--bear)">Resistencias</span>';
             for (const r of d.zones.resistances) {
-                html += `<div class="dt-zone dt-zone--resist">$${fmtP(r.price)} <span class="dt-zone__dist">+${r.distPct.toFixed(2)}%</span></div>`;
+                const tags = [];
+                if (r.confluence) tags.push('confluencia');
+                if (r.credible) tags.push('credible');
+                if (r.has_flip) tags.push('S→R');
+                if (r.touches > 1) tags.push(r.touches + 'x');
+                const tagStr = tags.length ? `<span class="dt-zone__tags">${tags.join(' · ')}</span>` : '';
+                const bar = r.strength ? `<div class="dt-zone__str-bar"><div class="dt-zone__str-fill dt-zone__str-fill--r" style="width:${Math.min(100, r.strength * 8)}%"></div></div>` : '';
+                html += `<div class="dt-zone dt-zone--resist"><span>$${fmtP(r.price)}</span><span class="dt-zone__dist">+${(r.distPct||0).toFixed(2)}%</span>${tagStr}${bar}</div>`;
             }
             html += '</div>';
         }
@@ -2513,7 +2520,14 @@ function renderSingleTrade(d) {
         if (d.zones.supports?.length) {
             html += '<div class="dt-zones__section"><span class="dt-zones__label" style="color:var(--bull)">Soportes</span>';
             for (const s of d.zones.supports) {
-                html += `<div class="dt-zone dt-zone--support">$${fmtP(s.price)} <span class="dt-zone__dist">-${s.distPct.toFixed(2)}%</span></div>`;
+                const tags = [];
+                if (s.confluence) tags.push('confluencia');
+                if (s.credible) tags.push('credible');
+                if (s.has_flip) tags.push('R→S');
+                if (s.touches > 1) tags.push(s.touches + 'x');
+                const tagStr = tags.length ? `<span class="dt-zone__tags">${tags.join(' · ')}</span>` : '';
+                const bar = s.strength ? `<div class="dt-zone__str-bar"><div class="dt-zone__str-fill dt-zone__str-fill--s" style="width:${Math.min(100, s.strength * 8)}%"></div></div>` : '';
+                html += `<div class="dt-zone dt-zone--support"><span>$${fmtP(s.price)}</span><span class="dt-zone__dist">-${(s.distPct||0).toFixed(2)}%</span>${tagStr}${bar}</div>`;
             }
             html += '</div>';
         }

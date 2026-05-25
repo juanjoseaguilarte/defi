@@ -102,10 +102,152 @@ def find_pivots(df, w=3):
     for i in range(w, len(df)-w):
         h, l = df['high'].iloc[i], df['low'].iloc[i]
         if all(h > df['high'].iloc[i-j] and h > df['high'].iloc[i+j] for j in range(1,w+1)):
-            highs.append({'idx':i,'price':h})
+            highs.append({'idx':i,'price':h,'ts':str(df['ts'].iloc[i]),'vol':df['volume'].iloc[i]})
         if all(l < df['low'].iloc[i-j] and l < df['low'].iloc[i+j] for j in range(1,w+1)):
-            lows.append({'idx':i,'price':l})
+            lows.append({'idx':i,'price':l,'ts':str(df['ts'].iloc[i]),'vol':df['volume'].iloc[i]})
     return highs, lows
+
+# ═══════════════════════════════════════════════════════════════
+# POWER 4 — S/R ENGINE
+# ═══════════════════════════════════════════════════════════════
+
+def power4_sr(df_1h, df_6h=None, df_daily=None, price=None):
+    """
+    Power 4 S/R with:
+    - Pivot 3+3 on multiple timeframes
+    - Credibility filter (near SMA20)
+    - Broken S becomes R and vice versa
+    - Confluence zones (multiple pivots at similar price)
+    - TF hierarchy (daily > 6h > 1h)
+    - Volume weight
+    """
+    if price is None:
+        price = df_1h['close'].iloc[-1]
+
+    all_levels = []
+
+    # Collect pivots from each timeframe with weight
+    tf_sources = [
+        (df_1h, '1H', 1.0),
+    ]
+    if df_6h is not None and len(df_6h) > 10:
+        tf_sources.append((df_6h, '6H', 2.0))
+    if df_daily is not None and len(df_daily) > 10:
+        tf_sources.append((df_daily, 'D', 3.0))
+
+    for df_tf, label, weight in tf_sources:
+        s20 = sma(df_tf['close'], 20)
+        highs, lows = find_pivots(df_tf, 3)
+
+        avg_vol = df_tf['volume'].mean() if len(df_tf) > 0 else 1
+
+        for h in highs:
+            sma_val = s20.iloc[h['idx']] if h['idx'] < len(s20) and not pd.isna(s20.iloc[h['idx']]) else None
+            credible = sma_val is not None and abs(h['price'] - sma_val) / sma_val <= 0.05
+            vol_mult = min(2.0, h['vol'] / avg_vol) if avg_vol > 0 else 1.0
+            all_levels.append({
+                'price': h['price'], 'type': 'resistance', 'tf': label,
+                'weight': weight * (1.5 if credible else 0.7) * vol_mult,
+                'credible': credible, 'idx': h['idx'], 'source': 'pivot',
+            })
+
+        for l in lows:
+            sma_val = s20.iloc[l['idx']] if l['idx'] < len(s20) and not pd.isna(s20.iloc[l['idx']]) else None
+            credible = sma_val is not None and abs(l['price'] - sma_val) / sma_val <= 0.05
+            vol_mult = min(2.0, l['vol'] / avg_vol) if avg_vol > 0 else 1.0
+            all_levels.append({
+                'price': l['price'], 'type': 'support', 'tf': label,
+                'weight': weight * (1.5 if credible else 0.7) * vol_mult,
+                'credible': credible, 'idx': l['idx'], 'source': 'pivot',
+            })
+
+    # Broken S becomes R, broken R becomes S
+    flipped = []
+    for lv in all_levels:
+        if lv['type'] == 'support' and price < lv['price']:
+            flipped.append({**lv, 'type': 'resistance', 'source': 'flipped', 'weight': lv['weight'] * 0.8})
+        elif lv['type'] == 'resistance' and price > lv['price']:
+            flipped.append({**lv, 'type': 'support', 'source': 'flipped', 'weight': lv['weight'] * 0.8})
+    all_levels.extend(flipped)
+
+    # Cluster into zones (within 0.3% of each other)
+    def cluster_levels(levels):
+        if not levels:
+            return []
+        levels.sort(key=lambda x: x['price'])
+        zones = []
+        current = [levels[0]]
+        for lv in levels[1:]:
+            if abs(lv['price'] - current[0]['price']) / current[0]['price'] < 0.003:
+                current.append(lv)
+            else:
+                zones.append(current)
+                current = [lv]
+        zones.append(current)
+
+        result = []
+        for zone in zones:
+            total_weight = sum(z['weight'] for z in zone)
+            avg_price = sum(z['price'] * z['weight'] for z in zone) / total_weight if total_weight else zone[0]['price']
+            tfs = list(set(z['tf'] for z in zone))
+            # Bonus for multi-timeframe confluence
+            confluence_bonus = 1.0 + 0.3 * (len(tfs) - 1)
+            has_credible = any(z['credible'] for z in zone)
+            sources = list(set(z['source'] for z in zone))
+            result.append({
+                'price': round(avg_price, 2),
+                'strength': round(total_weight * confluence_bonus, 2),
+                'touches': len(zone),
+                'timeframes': tfs,
+                'credible': has_credible,
+                'has_flip': 'flipped' in sources,
+                'confluence': len(tfs) > 1,
+            })
+        return result
+
+    res_levels = [l for l in all_levels if l['type'] == 'resistance']
+    sup_levels = [l for l in all_levels if l['type'] == 'support']
+
+    resistances = cluster_levels(res_levels)
+    supports = cluster_levels(sup_levels)
+
+    # Sort: resistances ascending from price, supports descending from price
+    resistances = [r for r in resistances if r['price'] > price * 1.001]
+    supports = [s for s in supports if s['price'] < price * 0.999]
+    resistances.sort(key=lambda x: x['price'])
+    supports.sort(key=lambda x: -x['price'])
+
+    # Add distance
+    for r in resistances:
+        r['distPct'] = round((r['price'] - price) / price * 100, 2)
+        r['label'] = _zone_label(r)
+    for s in supports:
+        s['distPct'] = round((price - s['price']) / price * 100, 2)
+        s['label'] = _zone_label(s)
+
+    return {
+        'resistances': resistances[:5],
+        'supports': supports[:5],
+    }
+
+def _zone_label(z):
+    parts = []
+    if z['confluence']:
+        parts.append(f"confluencia {'+'.join(z['timeframes'])}")
+    elif z['timeframes']:
+        parts.append(z['timeframes'][0])
+    if z['credible']:
+        parts.append('credible')
+    if z['has_flip']:
+        parts.append('S→R' if z.get('type') != 'support' else 'R→S')
+    if z['touches'] > 1:
+        parts.append(f"{z['touches']}x")
+    return ' | '.join(parts) if parts else ''
+
+
+def find_sr(df, price):
+    """Simple S/R for backward compat — uses Power 4 with single TF."""
+    return power4_sr(df, price=price)
 
 # ═══════════════════════════════════════════════════════════════
 # FULL TIMEFRAME ANALYSIS
@@ -371,16 +513,14 @@ def run_signals():
                 tf_data = analyze_tf(df)
                 if tf_data is None: continue
 
-                # S/R from this timeframe
-                highs, lows = find_pivots(df, 3)
-                sup = [l for l in lows if l['price'] < price]
-                res = [h for h in highs if h['price'] > price]
-                nearest_sup = max(sup, key=lambda x:x['price'])['price'] if sup else None
-                nearest_res = min(res, key=lambda x:x['price'])['price'] if res else None
+                # S/R Power 4
+                sr = power4_sr(df, price=price)
+                nearest_sup = sr['supports'][0]['price'] if sr['supports'] else None
+                nearest_res = sr['resistances'][0]['price'] if sr['resistances'] else None
 
                 sig = generate_signal(tf_data, phase, price)
-                sig['nearest_support'] = round(nearest_sup,2) if nearest_sup else None
-                sig['nearest_resist'] = round(nearest_res,2) if nearest_res else None
+                sig['nearest_support'] = nearest_sup
+                sig['nearest_resist'] = nearest_res
 
                 if sig['signal_type'] != 'watch':
                     signals.append({
@@ -441,13 +581,14 @@ def run_daytrader(asset):
     df6h = fetch_candles(pair,'6h',100)
     df1h = fetch_candles(pair,'1h',250)
     df15m = fetch_candles(pair,'15m',100)
+    df_daily = fetch_candles(pair,'1d',120)
     if df15m is None: raise Exception(f'No data for {pair}')
 
     tf6h = analyze_tf(df6h); tf1h = analyze_tf(df1h); tf15m = analyze_tf(df15m)
     if not all([tf6h,tf1h,tf15m]): raise Exception('Insufficient data')
 
     price = df15m['close'].iloc[-1]
-    zones = find_sr(df1h, price)
+    zones = power4_sr(df1h, df_6h=df6h, df_daily=df_daily, price=price)
     score, reasons = score_daytrader(tf6h, tf1h, tf15m, zones)
 
     d = None; conf = None
