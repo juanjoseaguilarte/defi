@@ -1,7 +1,20 @@
 const Database = require('better-sqlite3');
 const path = require('path');
+const fs = require('fs');
 
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'positions.db');
+const DATA_DIR = process.env.DB_DIR || path.join(require('os').homedir(), '.defi-data');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'positions.db');
+const OLD_DB_PATH = path.join(__dirname, 'positions.db');
+
+// Migrate old DB if new one doesn't exist yet
+if (!fs.existsSync(DB_PATH) && fs.existsSync(OLD_DB_PATH)) {
+    try {
+        fs.copyFileSync(OLD_DB_PATH, DB_PATH);
+        console.log('[DB] Migrated from', OLD_DB_PATH, 'to', DB_PATH);
+    } catch (e) { console.error('[DB] Migration failed:', e.message); }
+}
 
 function getDb() {
     const db = new Database(DB_PATH);

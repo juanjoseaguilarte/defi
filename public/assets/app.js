@@ -2490,5 +2490,15 @@ if (Notification?.permission === 'granted' && localStorage.getItem('defi_notif_e
 // Restore daytrader watch if it was running
 restoreDtWatch();
 
-// Restore trade tracking if active
-if (localStorage.getItem('defi_dt_tracking')) startTradeTracking();
+// Restore trades + telegram config on app boot (any page)
+restoreTradesIfNeeded();
+if (localStorage.getItem('defi_tg_token')) {
+    fetch(`${APP_BASE}/api/notify/status`).then(r => r.json()).then(s => {
+        if (!s?.telegram?.configured) {
+            fetch(`${APP_BASE}/api/notify/telegram/setup`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bot_token: localStorage.getItem('defi_tg_token') }),
+            }).catch(() => {});
+        }
+    }).catch(() => {});
+}
