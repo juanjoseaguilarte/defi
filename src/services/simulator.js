@@ -63,11 +63,13 @@ function closeAll(pos, price, date, log) {
     if (pos.aave_supply > 0) recovered += pos.aave_supply;
 
     // Close volatile borrow (Aave short)
+    // Borrowed ETH sold for USDC → repay ETH at current price
+    // profit = sell_proceeds - repay_cost (positive when price dropped)
     if (pos.aave_borrow_vol_usd > 0) {
         const repay_cost = pos.aave_borrow_vol_usd * (price / pos.aave_borrow_vol_entry);
         const profit = pos.aave_borrow_vol_usd - repay_cost;
-        log.push({ date, type: 'close', message: `Cerrar borrow ${price < pos.aave_borrow_vol_entry ? 'volátil' : 'volátil'}: prestado $${pos.aave_borrow_vol_usd.toFixed(0)} a $${pos.aave_borrow_vol_entry.toFixed(0)}, repagar a $${price.toFixed(0)}, P&L: $${profit.toFixed(0)}` });
-        recovered += pos.aave_borrow_vol_usd + profit;
+        log.push({ date, type: 'close', message: `Cerrar borrow volátil: prestado $${pos.aave_borrow_vol_usd.toFixed(0)} a $${pos.aave_borrow_vol_entry.toFixed(0)}, repagar $${repay_cost.toFixed(0)} a $${price.toFixed(0)}, P&L: $${profit.toFixed(0)}` });
+        recovered += profit;
     }
 
     // Close LONG hedge
@@ -122,7 +124,7 @@ function closeBorrowVol(pos, price, date, log) {
         const repay_cost = pos.aave_borrow_vol_usd * (price / pos.aave_borrow_vol_entry);
         const profit = pos.aave_borrow_vol_usd - repay_cost;
         log.push({ date, type: 'adjust_close', message: `Cerrar borrow volátil: P&L $${profit.toFixed(0)} (${(profit / pos.aave_borrow_vol_usd * 100).toFixed(1)}%)` });
-        recovered += pos.aave_borrow_vol_usd + profit;
+        recovered += profit;
         pos.aave_borrow_vol_usd = 0; pos.aave_borrow_vol_entry = 0;
     }
     return recovered;
@@ -430,14 +432,15 @@ function runBacktest(candles, amount, asset) {
             }
         }
 
-        // Daily P&L
+        // Daily P&L — full balance sheet
+        // Assets: cash + supply + LP + perp margins + USDC from borrow sale
+        // Liabilities: USDC borrow + volatile debt at current price
         if (strategyActive) {
-            let totalVal = cash;
+            let totalVal = cash + pos.aave_supply - pos.aave_borrow_usdc;
             if (pos.short_margin > 0) totalVal += pos.short_margin + (pos.short_entry - price) / pos.short_entry * pos.short_size;
             if (pos.long_margin > 0) totalVal += pos.long_margin + (price - pos.long_entry) / pos.long_entry * pos.long_size;
             if (pos.aave_borrow_vol_usd > 0) {
-                const bvProfit = pos.aave_borrow_vol_usd * (1 - price / pos.aave_borrow_vol_entry);
-                totalVal += pos.aave_borrow_vol_usd + bvProfit;
+                totalVal += pos.aave_borrow_vol_usd * (1 - price / pos.aave_borrow_vol_entry);
             }
             if (pos.lp_amount > 0) totalVal += getLpValue(pos, price);
             dailyPnL.push({ date, price, phase: confirmedPhase, cash, totalValue: totalVal, pnlPct: ((totalVal - amount) / amount * 100) });
