@@ -30,7 +30,8 @@ router.post('/watch', async (req, res) => {
     const { asset, action, trade } = req.body;
 
     if (action === 'start') {
-        await sendTelegram(`👀 *Vigilancia activada: ${asset}*\nCheckeando cada 3 min. Te aviso cuando haya señal.`);
+        const assets = req.body.assets || [asset];
+        await sendTelegram(`👀 *Vigilancia activada: ${assets.join(', ')}*\nCheckeando cada 3 min. Te aviso cuando haya señal.`);
         return res.json({ ok: true });
     }
 

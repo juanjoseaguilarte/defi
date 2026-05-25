@@ -239,13 +239,11 @@
                 <h2 class="section-title">Operativa Diaria</h2>
             </div>
             <div class="strategy-input-wrap">
-                <div class="strategy-input__row">
-                    <select class="aave-form__select" id="dtAsset" style="flex:1;padding:10px">
-                        <option value="ETH">ETH</option>
-                        <option value="BTC">BTC</option>
-                        <option value="SOL">SOL</option>
-                    </select>
-                    <button class="btn-primary" style="width:auto;padding:13px 24px;flex-shrink:0" id="dtAnalyzeBtn" onclick="analyzeDayTrade()">Analizar</button>
+                <div class="dt-asset-selector">
+                    <label class="dt-asset-pill"><input type="checkbox" class="dt-asset-check" value="ETH" checked><span>ETH</span></label>
+                    <label class="dt-asset-pill"><input type="checkbox" class="dt-asset-check" value="BTC" checked><span>BTC</span></label>
+                    <label class="dt-asset-pill"><input type="checkbox" class="dt-asset-check" value="SOL" checked><span>SOL</span></label>
+                    <button class="btn-primary" style="padding:10px 24px;flex-shrink:0" id="dtAnalyzeBtn" onclick="analyzeDayTrade()">Analizar</button>
                 </div>
                 <div class="strategy-chain">Analiza 15m + 1H + 6H &mdash; S/R del 1H &mdash; M&aacute;ximo 6 horas</div>
             </div>
