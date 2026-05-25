@@ -37,7 +37,7 @@ navItems.forEach(btn => {
             if (page === 'analyst') loadAnalyst();
             if (page === 'signals') loadSignals();
             if (page === 'strategy') initTracker();
-            if (page === 'daytrader') loadOpenTrades();
+            if (page === 'daytrader') { restoreTradesIfNeeded().then(() => loadOpenTrades()); }
         }
     });
 });
@@ -2029,27 +2029,22 @@ async function loadDtHistory() {
 async function closeDtSignal(id, result) {
     const sig = dtOpenSignals.find(s => s.id === id);
     let pnl = 0;
+    let closeP = 0;
     if (sig) {
         try {
             const pair = sig.asset + 'USDT';
             if (latestPrices[pair]) {
-                const closeP = latestPrices[pair];
+                closeP = latestPrices[pair];
                 if (sig.signal === 'LONG') pnl = ((closeP - sig.entry_price) / sig.entry_price * sig.leverage * 100);
                 else pnl = ((sig.entry_price - closeP) / sig.entry_price * sig.leverage * 100);
-
-                await fetch(`${APP_BASE}/api/daytrader/close`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id, result, closed_price: closeP, pnl_pct: +pnl.toFixed(2) }),
-                });
-                loadDtHistory();
-                return;
             }
         } catch (_) {}
     }
     await fetch(`${APP_BASE}/api/daytrader/close`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, result, closed_price: 0, pnl_pct: 0 }),
+        body: JSON.stringify({ id, result, closed_price: closeP, pnl_pct: +pnl.toFixed(2) }),
     });
+    clearTradeBackup(id);
     loadDtHistory();
     loadOpenTrades();
 }
@@ -2091,8 +2086,13 @@ async function confirmEntry(asset) {
         body: JSON.stringify({ id, entry_price: entryP, tp, sl, leverage: lev, margin, signal: signalDir, asset }),
     });
 
+    const backed = getBackedUpTrades();
+    backed.push({ id, asset, signal: signalDir, entry_price: entryP, tp, sl, leverage: lev, exit_by: new Date(Date.now() + 6*3600000).toISOString() });
+    backupOpenTrades(backed);
+
     startTradeTracking();
     loadDtHistory();
+    loadOpenTrades();
 
     const form = document.getElementById('dtEnterForm-' + asset);
     if (form) form.innerHTML = '<div style="color:var(--bull);font-size:0.75rem;font-weight:700;padding:8px;text-align:center">✓ Entrada confirmada — vigilando TP/SL</div>';
@@ -2223,6 +2223,62 @@ async function addManualTrade() {
     loadOpenTrades();
 }
 
+// ── Trade backup/restore (survives DB wipe on deploy) ──
+
+function backupOpenTrades(trades) {
+    if (!trades?.length) return;
+    localStorage.setItem('defi_open_trades', JSON.stringify(trades));
+}
+
+function getBackedUpTrades() {
+    try {
+        const raw = localStorage.getItem('defi_open_trades');
+        return raw ? JSON.parse(raw) : [];
+    } catch (_) { return []; }
+}
+
+function clearTradeBackup(id) {
+    const trades = getBackedUpTrades().filter(t => t.id !== id);
+    if (trades.length) localStorage.setItem('defi_open_trades', JSON.stringify(trades));
+    else localStorage.removeItem('defi_open_trades');
+}
+
+async function restoreTradesIfNeeded() {
+    const dt = getDeviceToken();
+    try {
+        const resp = await fetch(`${APP_BASE}/api/daytrader/tracking?device_token=${dt}`);
+        const data = await resp.json();
+        if (data.ok && data.trades?.length) {
+            backupOpenTrades(data.trades);
+            return;
+        }
+    } catch (_) {}
+
+    const backed = getBackedUpTrades();
+    if (!backed.length) return;
+
+    console.log(`[DT] Restoring ${backed.length} trades from backup`);
+    for (const t of backed) {
+        try {
+            const resp = await fetch(`${APP_BASE}/api/daytrader/save`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    device_token: dt,
+                    trade: { asset: t.asset, signal: t.signal, confidence: t.confidence || 'restored', score: t.score || 0, entry: t.entry_price, tp: t.tp, sl: t.sl, rr: t.rr || 0, leverage: t.leverage, liqPrice: t.liq_price || 0, maxHoldHours: t.max_hold_hours || 6, exitBy: t.exit_by || new Date(Date.now() + 6*3600000).toISOString() },
+                }),
+            });
+            const saved = await resp.json();
+            if (saved.ok) {
+                await fetch(`${APP_BASE}/api/daytrader/enter`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: saved.id, entry_price: t.entry_price, tp: t.tp, sl: t.sl, leverage: t.leverage, signal: t.signal, asset: t.asset }),
+                });
+            }
+        } catch (_) {}
+    }
+    startTradeTracking();
+}
+
 async function loadOpenTrades() {
     const el = document.getElementById('dtOpenTrades');
     if (!el) return;
@@ -2233,8 +2289,11 @@ async function loadOpenTrades() {
         const data = await resp.json();
         if (!data.ok || !data.trades?.length) {
             el.innerHTML = '';
+            localStorage.removeItem('defi_open_trades');
             return;
         }
+
+        backupOpenTrades(data.trades);
 
         let html = '<div class="dt-open-section"><div class="dt-open-section__title">Operaciones abiertas</div>';
 
