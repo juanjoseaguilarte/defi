@@ -89,21 +89,20 @@ function generateTrade(price, asset, tf6h, tf1h, tf15m, zones) {
     else if (tf15m.momentum === 'bearish') reasons.push('15M: 3 últimas velas bajistas — momentum vendedor');
     else reasons.push('15M: sin momentum claro');
 
-    // Determine direction
+    // Determine direction — only medium+ confidence
     let direction = null;
-    let confidence = 'baja';
+    let confidence = null;
 
     if (totalScore >= 6) { direction = 'LONG'; confidence = 'alta'; }
     else if (totalScore >= 3) { direction = 'LONG'; confidence = 'media'; }
     else if (totalScore <= -6) { direction = 'SHORT'; confidence = 'alta'; }
     else if (totalScore <= -3) { direction = 'SHORT'; confidence = 'media'; }
-    else if (totalScore > 0) { direction = 'LONG'; confidence = 'baja'; }
-    else if (totalScore < 0) { direction = 'SHORT'; confidence = 'baja'; }
 
     if (!direction) {
+        const leaning = totalScore > 0 ? 'LONG' : totalScore < 0 ? 'SHORT' : 'ninguna';
         return {
             signal: 'NO_TRADE',
-            reason: 'Timeframes no alineados. Mejor esperar.',
+            reason: `Señal débil (score ${totalScore}, tendencia ${leaning}). Solo opero con confianza media o alta (score ≥3 o ≤-3).`,
             score: totalScore,
             analysis: { tf6h, tf1h, tf15m },
             zones,
@@ -154,23 +153,21 @@ function generateTrade(price, asset, tf6h, tf1h, tf15m, zones) {
     const risk = Math.abs(price - sl);
     rr = risk > 0 ? (reward / risk) : 0;
 
-    if (rr < 1.2) {
-        reasons.push(`R:R ${rr.toFixed(2)} < 1.2 — riesgo/recompensa insuficiente`);
+    if (rr < 1.5) {
+        reasons.push(`R:R ${rr.toFixed(2)} < 1.5 — riesgo/recompensa insuficiente`);
         return {
             signal: 'NO_TRADE',
-            reason: `Ratio riesgo/recompensa ${rr.toFixed(2)} demasiado bajo (mínimo 1.2). Esperar mejor setup.`,
+            reason: `Ratio riesgo/recompensa ${rr.toFixed(2)} demasiado bajo (mínimo 1.5). Esperar mejor setup.`,
             score: totalScore, analysis: { tf6h, tf1h, tf15m }, zones, reasons, rr,
         };
     }
 
-    // Leverage suggestion based on confidence + distance to SL
+    // Leverage: conservador. Max x5 solo con confianza alta y SL lejos.
     const slDistPct = (risk / price) * 100;
     let leverage = 3;
-    if (confidence === 'alta' && slDistPct > 0.5) leverage = 5;
-    else if (confidence === 'alta') leverage = 7;
-    else if (confidence === 'media' && slDistPct > 1) leverage = 3;
-    else if (confidence === 'media') leverage = 5;
-    else leverage = 3;
+    if (confidence === 'alta' && slDistPct > 1) leverage = 5;
+    else if (confidence === 'alta') leverage = 3;
+    else if (confidence === 'media') leverage = 3;
 
     const liqPrice = direction === 'LONG'
         ? price * (1 - 0.9 / leverage)
@@ -199,6 +196,8 @@ function generateTrade(price, asset, tf6h, tf1h, tf15m, zones) {
             win: `+${(reward / price * leverage * 100).toFixed(1)}%`,
             loss: `-${(risk / price * leverage * 100).toFixed(1)}%`,
         },
+        maxLeverage: leverage,
+        warning: `NO usar más de x${leverage}. Calculado para que el SL no te liquide.`,
         analysis: { tf6h, tf1h, tf15m },
         zones,
         reasons,

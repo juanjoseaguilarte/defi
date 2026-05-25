@@ -1221,8 +1221,13 @@ input, select { font-family: var(--font); }
     display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px;
     font-size: 0.7rem; color: var(--text-2);
 }
+.dt-lev-warn {
+    margin-top: 10px; font-size: 0.68rem; font-weight: 700; color: var(--bear);
+    background: rgba(239,68,68,0.08); padding: 8px 12px; border-radius: 8px; text-align: center;
+    border: 1px solid rgba(239,68,68,0.15);
+}
 .dt-timer {
-    margin-top: 10px; font-size: 0.7rem; color: var(--accent);
+    margin-top: 8px; font-size: 0.7rem; color: var(--accent);
     background: rgba(99,102,241,0.08); padding: 8px 12px; border-radius: 8px; text-align: center;
 }
 

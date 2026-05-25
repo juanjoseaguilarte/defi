@@ -2383,6 +2383,7 @@ function renderSingleTrade(d) {
                 <div>Liq: $${fmtP(d.liqPrice)}</div>
                 <div>Ganancia: <span style="color:var(--bull)">${d.potentialPnl.win}</span> / Pérdida: <span style="color:var(--bear)">${d.potentialPnl.loss}</span></div>
             </div>
+            <div class="dt-lev-warn">NO usar m&aacute;s de x${d.leverage}. Con x${d.leverage} el SL = ${d.slDistPct}% de p&eacute;rdida. Con x20 ser&iacute;a ${(d.slDistPct * 20 / d.leverage).toFixed(1)}%.</div>
             <div class="dt-timer">Cerrar antes de: <b>${new Date(d.exitBy).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</b> (${d.maxHoldHours}h max)</div>
             <button class="dt-enter-btn" onclick="showEnterForm('${d.asset}')">He entrado</button>
             <div class="dt-enter-form" id="dtEnterForm-${d.asset}" style="display:none">

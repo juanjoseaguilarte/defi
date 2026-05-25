@@ -242,6 +242,8 @@ router.post('/watch', async (req, res) => {
             `*Liquidación:* $${fmtP(trade.liqPrice)}`,
             `*Ganancia:* ${trade.potentialPnl.win} / *Pérdida:* ${trade.potentialPnl.loss}`,
             `*Cerrar antes de:* ${new Date(trade.exitBy).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`,
+            '',
+            `⚠️ *NO usar más de x${trade.leverage}*`,
         ].join('\n');
 
         const tgOk = await sendTelegram(msg);
